@@ -1,5 +1,7 @@
 # ddc_tcn
+
 research of advanced ddc based on temporary convolution network.
+
 ---
 # WaveNet
 
