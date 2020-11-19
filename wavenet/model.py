@@ -60,7 +60,7 @@ class WaveNet:
         loss.backward()
         self.optimizer.step()
 
-        return loss.data[0]
+        return loss.item()
 
     def generate(self, inputs):
         """
