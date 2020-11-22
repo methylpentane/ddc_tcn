@@ -196,7 +196,7 @@ class DensNet(torch.nn.Module):
         return output
 
 
-class WaveNet(torch.nn.Module):
+class WaveNetModule(torch.nn.Module):
     def __init__(self, layer_size, stack_size, in_channels, res_channels):
         """
         Stack residual blocks by layer and stack size
@@ -206,7 +206,7 @@ class WaveNet(torch.nn.Module):
         :param res_channels: number of residual channel for input, output
         :return:
         """
-        super(WaveNet, self).__init__()
+        super(WaveNetModule, self).__init__()
 
         self.receptive_fields = self.calc_receptive_fields(layer_size, stack_size)
 

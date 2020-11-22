@@ -7,7 +7,7 @@ import os
 import torch
 import torch.optim
 
-from wavenet.networks import WaveNet as WaveNetModule
+from wavenet.networks import WaveNetModule
 
 
 class WaveNet:
