@@ -183,7 +183,7 @@ class DensNet(torch.nn.Module):
         self.conv2 = torch.nn.Conv1d(channels, channels, 1)
 
         self.relu = torch.nn.ReLU()
-        self.softmax = torch.nn.Softmax(dim=1)
+        self.out_nonlin = torch.nn.Softmax(dim=1)
 
     def forward(self, x):
         output = self.relu(x)
@@ -191,7 +191,8 @@ class DensNet(torch.nn.Module):
         output = self.relu(output)
         output = self.conv2(output)
 
-        output = self.softmax(output)
+        if not self.training:
+            output = self.out_nonlin(output)
 
         return output
 
