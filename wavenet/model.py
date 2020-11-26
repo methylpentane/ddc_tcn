@@ -58,6 +58,7 @@ class WaveNet:
 
         self.optimizer.zero_grad()
         loss.backward()
+        del loss # for memory save
         self.optimizer.step()
 
         return loss.item()

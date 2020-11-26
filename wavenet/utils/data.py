@@ -14,7 +14,7 @@ def load_audio(filename, sample_rate=16000, trim=True, trim_frame_length=2048):
     audio, _ = librosa.load(filename, sr=sample_rate, mono=True)
     audio = audio.reshape(-1, 1)
 
-    if trim > 0:
+    if trim:
         audio, _ = librosa.effects.trim(audio, frame_length=trim_frame_length)
 
     return audio
@@ -63,7 +63,7 @@ def mu_law_decode(output, quantization_channels=256):
 
 
 class Dataset(data.Dataset):
-    def __init__(self, data_dir, sample_rate=16000, in_channels=256, trim=True):
+    def __init__(self, data_dir, sample_rate=16000, in_channels=256, trim=False): #no trim for match timestep
         super(Dataset, self).__init__()
 
         self.in_channels = in_channels
