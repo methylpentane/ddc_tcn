@@ -143,6 +143,7 @@ class DataLoader(data.DataLoader):
         audio = np.pad(audio, [[0, 0], [self.receptive_fields, 0], [0, 0]], 'constant')
 
         if self.sample_size:
+            # サンプルサイズが設定されている場合はその長さに音源を切って順にトレーニングに投げる(ランダムにはならない！)
             sample_size = self.calc_sample_size(audio)
 
             while sample_size > self.receptive_fields:
@@ -155,6 +156,7 @@ class DataLoader(data.DataLoader):
                 audio = audio[:, sample_size-self.receptive_fields:, :]
                 sample_size = self.calc_sample_size(audio)
         else:
+            # サンプルサイズが設定されていない場合はそのまま投げる(メモリ溢れても知らないよ)
             targets = audio[:, self.receptive_fields:, :]
             return self._variable(audio),\
                    self._variable(one_hot_decode(targets, 2))
@@ -163,6 +165,12 @@ class DataLoader(data.DataLoader):
     """
     input: spectrum (one channel from original data)
     output: onset prediction(0~1, 1channel)
+
+    data_dir -> ddc's chart_onset/mel80hop441
+    train.txtとかが入っているがこれは消しておく
+    とりあえずで動かしたいので
+        * バッチサイズ１(一曲ずつ読み込む)
+        * サンプルサイズ＝一曲まるまる(音ゲーなので差はあれど長さはほとんど同じとみなす)
     """
 
 class Dataset_onset(data.Dataset):
@@ -173,24 +181,22 @@ class Dataset_onset(data.Dataset):
         self.trim = trim
 
         self.root_path = data_dir
-        self.filenames = [x for x in sorted(os.listdir(data_dir))]
+        self.filenames = [x for x in sorted(os.listdir(self.root_path))]
 
     def __getitem__(self, index):
         filepath = os.path.join(self.root_path, self.filenames[index])
 
         with open(filepath, 'rb') as f:
             file = pickle.load(f)
-            encoded_audio = file[1][selected_channel] # shape:(time, freq, channel)
 
-        return encoded_audio
+        return file
 
     def __len__(self):
         return len(self.filenames)
 
 
 class DataLoader_onset(data.DataLoader):
-    def __init__(self, data_dir, receptive_fields,
-                 sample_size=0, sample_rate=16000, in_channels=256,
+    def __init__(self, data_dir, receptive_fields, in_channels=80,
                  batch_size=1, shuffle=True):
         """
         DataLoader for WaveNet
@@ -201,26 +207,24 @@ class DataLoader_onset(data.DataLoader):
                             |-- receptive field --|---------------------|
                             |------- samples -------------------|
                             |---------------------|-- outputs --|
-        :param sample_rate: sound sampling rates
         :param in_channels: number of input channels
         :param batch_size:
         :param shuffle:
         """
-        dataset = Dataset(data_dir, sample_rate, in_channels)
+        dataset = Dataset_onset(data_dir, sample_rate, in_channels)
 
         super(DataLoader, self).__init__(dataset, batch_size, shuffle)
 
-        if sample_size <= receptive_fields:
-            raise Exception("sample_size has to be bigger than receptive_fields")
+        # if sample_size <= receptive_fields:
+        #     raise Exception("sample_size has to be bigger than receptive_fields")
 
-        self.sample_size = sample_size
+        # self.sample_size = sample_size
         self.receptive_fields = receptive_fields
 
         self.collate_fn = self._collate_fn
 
     def calc_sample_size(self, audio):
-        return self.sample_size if len(audio[0]) >= self.sample_size\
-                                else len(audio[0])
+        else len(audio[0])
 
     @staticmethod
     def _variable(data):
@@ -231,24 +235,23 @@ class DataLoader_onset(data.DataLoader):
         else:
             return torch.autograd.Variable(tensor)
 
-    def _collate_fn(self, audio):
-        audio = np.pad(audio, [[0, 0], [self.receptive_fields, 0], [0, 0]], 'constant')
+    def _collate_fn(self, files):
+        song_feat_batch = np.array([])
+        chart_batch = np.array([])
+        for file in files:
+            # 今はbatch_size:1を想定、そうでないと曲によって長さが違うのでちょっと処理が面倒になる
+            song_meta, song_feat, charts = file
+            # song_feat
+            song_feat = np.squeeze(song_feat[:, :, 0:1]) # select first channel for now #TODO selective channel
+            np.append(song_feat_batch, song_feat)
+            # chart
+            np.append(chart_batch, charts[0]) # select fixed index of 20(16) charts for now #TODO difficulty conditioning
 
-        if self.sample_size:
-            sample_size = self.calc_sample_size(audio)
+        song_feat_batch = np.pad(song_feat_batch, [[0, 0], [self.receptive_fields, 0], [0, 0]], 'constant')
+        target_batch = np.array([])
+        for chart in chart_batch: # batch_size=1 batch次元が必要なので形式上のfor文
+            target = [int(frame_idx in chart.onsets) for frame_idx in range(chart.nframes)]
+            np.append(target_batch, target)
 
-            while sample_size > self.receptive_fields:
-                inputs = audio[:, :sample_size, :]
-                targets = audio[:, self.receptive_fields:sample_size, :]
-
-                yield self._variable(inputs),\
-                      self._variable(one_hot_decode(targets, 2))
-
-                audio = audio[:, sample_size-self.receptive_fields:, :]
-                sample_size = self.calc_sample_size(audio)
-        else:
-            targets = audio[:, self.receptive_fields:, :]
-            return self._variable(audio),\
-                   self._variable(one_hot_decode(targets, 2))
-
+        return self._variable(song_feat_batch), self._variable(target_batch)
 # end
