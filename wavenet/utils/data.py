@@ -11,6 +11,8 @@ import torch.utils.data as data
 
 import pickle
 
+from IPython import embed
+
 # general audio methods
 
 def load_audio(filename, sample_rate=16000, trim=True, trim_frame_length=2048):
@@ -235,22 +237,25 @@ class DataLoader_onset(data.DataLoader):
             return torch.autograd.Variable(tensor)
 
     def _collate_fn(self, files):
-        song_feat_batch = np.array([])
-        chart_batch = np.array([])
+        song_feat_batch = []
+        chart_batch = []
         for file in files:
             # 今はbatch_size:1を想定、そうでないと曲によって長さが違うのでちょっと処理が面倒になる
             song_meta, song_feat, charts = file
             # song_feat
             song_feat = np.squeeze(song_feat[:, :, 0:1]) # select first channel for now #TODO selective channel
-            np.append(song_feat_batch, song_feat)
+            song_feat_batch.append(song_feat)
             # chart
-            np.append(chart_batch, charts[0]) # select fixed index of 20(16) charts for now #TODO difficulty conditioning
+            chart_batch.append(charts[0])
 
-        song_feat_batch = np.pad(song_feat_batch, [[0, 0], [self.receptive_fields, 0], [0, 0]], 'constant')
-        target_batch = np.array([])
+        target_batch = []
         for chart in chart_batch: # batch_size=1 batch次元が必要なので形式上のfor文
             target = [int(frame_idx in chart.onsets) for frame_idx in range(chart.nframes)]
-            np.append(target_batch, target)
+            target_batch.append(target)
 
-        return self._variable(song_feat_batch), self._variable(target_batch)
+        song_feat_batch = np.array(song_feat_batch)
+        song_feat_batch = np.pad(song_feat_batch, [[0, 0], [self.receptive_fields, 0], [0, 0]], 'constant')
+        target_batch = np.array(target_batch)
+
+        yield self._variable(song_feat_batch), self._variable(target_batch)
 # end

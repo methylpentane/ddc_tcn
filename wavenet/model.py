@@ -53,12 +53,11 @@ class WaveNet:
         """
         outputs = self.net(inputs)
 
-        loss = self.loss(outputs.view(-1, self.in_channels),
-                         targets.long().view(-1))
+        loss = self.loss(outputs.view(1,-1),
+                         targets)
 
         self.optimizer.zero_grad()
         loss.backward()
-        del loss # for memory save
         self.optimizer.step()
 
         return loss.item()
