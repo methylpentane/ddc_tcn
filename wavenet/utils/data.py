@@ -1,9 +1,9 @@
 """
 Show raw audio and mu-law encode samples to make input source
 """
-import os
+import os,sys
 
-import librosa
+# import librosa
 import numpy as np
 
 import torch
@@ -175,13 +175,13 @@ class DataLoader(data.DataLoader):
 
 class Dataset_onset(data.Dataset):
     def __init__(self, data_dir, selected_channel=0, in_channels=80, trim=False): #no trim for match timestep
-        super(Dataset, self).__init__()
+        super(Dataset_onset, self).__init__()
 
         self.in_channels = in_channels
         self.trim = trim
 
         self.root_path = data_dir
-        self.filenames = [x for x in sorted(os.listdir(self.root_path))]
+        self.filenames = [x for x in sorted(os.listdir(self.root_path)) if 'pkl' in x]
 
     def __getitem__(self, index):
         filepath = os.path.join(self.root_path, self.filenames[index])
@@ -202,7 +202,6 @@ class DataLoader_onset(data.DataLoader):
         DataLoader for WaveNet
         :param data_dir:
         :param receptive_fields: integer. size(length) of receptive fields
-        :param sample_size: integer. number of timesteps to train at once.
                             sample size has to be bigger than receptive fields.
                             |-- receptive field --|---------------------|
                             |------- samples -------------------|
@@ -211,9 +210,9 @@ class DataLoader_onset(data.DataLoader):
         :param batch_size:
         :param shuffle:
         """
-        dataset = Dataset_onset(data_dir, sample_rate, in_channels)
+        dataset = Dataset_onset(data_dir, in_channels)
 
-        super(DataLoader, self).__init__(dataset, batch_size, shuffle)
+        super(DataLoader_onset, self).__init__(dataset, batch_size, shuffle)
 
         # if sample_size <= receptive_fields:
         #     raise Exception("sample_size has to be bigger than receptive_fields")
@@ -224,7 +223,7 @@ class DataLoader_onset(data.DataLoader):
         self.collate_fn = self._collate_fn
 
     def calc_sample_size(self, audio):
-        else len(audio[0])
+        len(audio[0])
 
     @staticmethod
     def _variable(data):

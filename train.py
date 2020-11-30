@@ -5,7 +5,7 @@ import os
 
 import wavenet.config as config
 from wavenet.model import WaveNet
-from wavenet.utils.data import DataLoader
+from wavenet.utils.data import DataLoader_onset
 
 
 class Trainer:
@@ -16,8 +16,7 @@ class Trainer:
                                args.in_channels, args.res_channels,
                                lr=args.lr)
 
-        self.data_loader = DataLoader(args.data_dir, self.wavenet.receptive_fields,
-                                      args.sample_size, args.sample_rate, args.in_channels)
+        self.data_loader = DataLoader_onset(args.data_dir, self.wavenet.receptive_fields, args.in_channels)
 
     def infinite_batch(self):
         while True:

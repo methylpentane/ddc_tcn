@@ -182,7 +182,7 @@ class DensNet(torch.nn.Module):
         super(DensNet, self).__init__()
 
         self.conv1 = torch.nn.Conv1d(channels, channels, 1)
-        self.conv2 = torch.nn.Conv1d(channels, channels, 1)
+        self.conv2 = torch.nn.Conv1d(channels, 1, 1)
 
         self.relu = torch.nn.ReLU()
         self.out_nonlin = torch.nn.Softmax(dim=1)

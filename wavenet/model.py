@@ -26,7 +26,7 @@ class WaveNet:
 
     @staticmethod
     def _loss():
-        loss = torch.nn.CrossEntropyLoss()
+        loss = torch.nn.BCEWithLogitsLoss()
 
         if torch.cuda.is_available():
             loss = loss.cuda()
