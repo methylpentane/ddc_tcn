@@ -10,8 +10,8 @@ import random
 import numpy as np
 from functools import reduce
 
-from beatcalc import BeatCalc
-from util import make_onset_feature_context, np_pad
+from wavenet.utils.beatcalc import BeatCalc
+from wavenet.utils.util import make_onset_feature_context, np_pad
 
 class Chart(object):
     def __init__(self, song_metadata, metadata, annotations):
