@@ -20,13 +20,17 @@ class Trainer:
                                lr=args.lr)
 
         self.data_loader = DataLoader_onset(args.data_dir, self.wavenet.receptive_fields, args.in_channels)
-        self.summary_writer = SummaryWriter(log_dir=args.log_dir)
+        self.summary_writer = None if args.nolog else SummaryWriter(log_dir=args.log_dir)
 
     def infinite_batch(self):
         while True:
             for dataset in self.data_loader:
                 for inputs, targets in dataset:
                     yield inputs, targets
+
+    def log(self, tag, y, x):
+        if self.summary_writer is not None:
+            self.summary_writer.add_scalar(tag, y, x)
 
     def run(self):
         total_steps = 0
@@ -37,7 +41,7 @@ class Trainer:
             total_steps += 1
 
             print('[{0}/{1}] loss: {2}'.format(total_steps, args.num_steps, loss))
-            self.summary_writer.add_scalar('mean_cross_entropy', loss, total_steps)
+            self.log('mean_cross_entropy', loss, total_steps)
 
             if total_steps > self.args.num_steps:
                 break

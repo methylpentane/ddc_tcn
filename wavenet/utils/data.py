@@ -1,9 +1,11 @@
+# delete this line if you want disable fold option in vim.
+# vim:set foldmethod=marker:
 """
 Show raw audio and mu-law encode samples to make input source
 """
 import os,sys
 
-# import librosa
+# import librosa # use only for raw audio input.
 import numpy as np
 
 import torch
@@ -13,8 +15,7 @@ import pickle
 
 from IPython import embed
 
-# general audio methods
-
+# general audio methods {{{
 def load_audio(filename, sample_rate=16000, trim=True, trim_frame_length=2048):
     audio, _ = librosa.load(filename, sr=sample_rate, mono=True)
     audio = audio.reshape(-1, 1)
@@ -66,8 +67,8 @@ def mu_law_decode(output, quantization_channels=256):
 
     return waveform
 
-# end
-# Dataset class (original)
+# }}}
+# Dataset class (original) {{{
     """
     input: raw audio
     output: raw audio
@@ -162,8 +163,8 @@ class DataLoader(data.DataLoader):
             targets = audio[:, self.receptive_fields:, :]
             return self._variable(audio),\
                    self._variable(one_hot_decode(targets, 2))
-# end
-# Dataset class (ddc_onsetnet)
+# }}}
+# Dataset class (ddc_onsetnet) {{{
     """
     input: spectrum (one channel from original data)
     output: onset prediction(0~1, 1channel)
@@ -199,7 +200,7 @@ class Dataset_onset(data.Dataset):
 
 class DataLoader_onset(data.DataLoader):
     def __init__(self, data_dir, receptive_fields, in_channels=80,
-                 batch_size=1, shuffle=True):
+                 batch_size=1, shuffle=True, valid=False):
         """
         DataLoader for WaveNet
         :param data_dir:
@@ -212,7 +213,14 @@ class DataLoader_onset(data.DataLoader):
         :param batch_size:
         :param shuffle:
         """
+        # add validation feature. if valid=True, this is dataloader for validation
         dataset = Dataset_onset(data_dir, in_channels)
+        dataset_size = len(dataset)
+        train_size = int(dataset_size*0.9)
+        if valid==False:
+            dataset = data.dataset.Subset(dataset, list(range(train_size)))
+        else:
+            dataset = data.dataset.Subset(dataset, list(range(train_size, dataset_size)))
 
         super(DataLoader_onset, self).__init__(dataset, batch_size, shuffle)
 
@@ -261,5 +269,6 @@ class DataLoader_onset(data.DataLoader):
         song_feat_batch = np.pad(song_feat_batch, [[0, 0], [self.receptive_fields, 0], [0, 0]], 'constant')
         target_batch = np.array(target_batch)
 
+        # オリジナル実装では、sample_sizeを制限すると曲を刻んでyieldするので、それに合わせてyieldになっている。
         yield self._variable(song_feat_batch), self._variable(target_batch)
-# end
+# }}}

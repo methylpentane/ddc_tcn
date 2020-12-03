@@ -15,6 +15,7 @@ parser.add_argument('--res_channels', type=int, default=512, help='number of cha
 
 parser.add_argument('--sample_rate', type=int, default=16000, help='Sampling rates for input sound')
 parser.add_argument('--sample_size', type=int, default=100000, help='Sample size for training input')
+parser.add_argument('--nolog', action='store_true', default=False, help='if True, tensorboard wont run')
 
 
 def parse_args(is_training=True):
