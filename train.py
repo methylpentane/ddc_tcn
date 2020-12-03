@@ -3,6 +3,9 @@ A script for WaveNet training
 """
 import os
 
+from torch.utils.tensorboard import SummaryWriter
+from datetime import datetime
+
 import wavenet.config as config
 from wavenet.model import WaveNet
 from wavenet.utils.data import DataLoader_onset
@@ -17,6 +20,7 @@ class Trainer:
                                lr=args.lr)
 
         self.data_loader = DataLoader_onset(args.data_dir, self.wavenet.receptive_fields, args.in_channels)
+        self.summary_writer = SummaryWriter(log_dir=args.log_dir)
 
     def infinite_batch(self):
         while True:
@@ -33,6 +37,7 @@ class Trainer:
             total_steps += 1
 
             print('[{0}/{1}] loss: {2}'.format(total_steps, args.num_steps, loss))
+            self.summary_writer.add_scalar('mean_cross_entropy', loss, total_steps)
 
             if total_steps > self.args.num_steps:
                 break
@@ -41,11 +46,12 @@ class Trainer:
 
 
 def prepare_output_dir(args):
-    args.log_dir = os.path.join(args.output_dir, 'log')
+    log_dirname = 'log_' + datetime.strftime(datetime.now(), '%y%m%d%H%M%S')
+    args.log_dir = os.path.join(args.output_dir, log_dirname)
     args.model_dir = os.path.join(args.output_dir, 'model')
     args.test_output_dir = os.path.join(args.output_dir, 'test')
 
-    os.makedirs(args.log_dir, exist_ok=True)
+    # os.makedirs(args.log_dir, exist_ok=True) # tensorboard makes log_dir
     os.makedirs(args.model_dir, exist_ok=True)
     os.makedirs(args.test_output_dir, exist_ok=True)
 

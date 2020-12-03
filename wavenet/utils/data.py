@@ -246,7 +246,11 @@ class DataLoader_onset(data.DataLoader):
             song_feat = np.squeeze(song_feat[:, :, 0:1]) # select first channel for now #TODO selective channel
             song_feat_batch.append(song_feat)
             # chart
-            chart_batch.append(charts[0])
+            for chart in charts:
+                coarse_diff = chart.get_coarse_difficulty()
+                if coarse_diff == "Challenge":
+                    chart_batch.append(chart)
+                    break
 
         target_batch = []
         for chart in chart_batch: # batch_size=1 batch次元が必要なので形式上のfor文
