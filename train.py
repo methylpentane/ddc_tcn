@@ -20,13 +20,19 @@ class Trainer:
                                lr=args.lr)
 
         self.data_loader = DataLoader_onset(args.data_dir, self.wavenet.receptive_fields, args.in_channels)
+        self.data_loader_valid = DataLoader_onset(args.data_dir, self.wavenet.receptive_fields, args.in_channels, valid=True)
         self.summary_writer = None if args.nolog else SummaryWriter(log_dir=args.log_dir)
 
-    def infinite_batch(self):
+    def infinite_batch(self): # deprecated by akiba. changed to whileTrue{one_epoch}
         while True:
             for dataset in self.data_loader:
                 for inputs, targets in dataset:
                     yield inputs, targets
+
+    def one_epoch_batch(self):
+        for dataset in self.data_loader:
+            for inputs, targets in dataset:
+                yield inputs, targets
 
     def log(self, tag, y, x):
         if self.summary_writer is not None:
@@ -35,13 +41,16 @@ class Trainer:
     def run(self):
         total_steps = 0
 
-        for inputs, targets in self.infinite_batch():
-            loss = self.wavenet.train(inputs, targets)
+        while True:
+            for inputs, targets in self.one_epoch_batch():
+                loss = self.wavenet.train(inputs, targets)
 
-            total_steps += 1
+                total_steps += 1
 
-            print('[{0}/{1}] loss: {2}'.format(total_steps, args.num_steps, loss))
-            self.log('mean_cross_entropy', loss, total_steps)
+                print('[{0}/{1}] loss: {2}'.format(total_steps, args.num_steps, loss))
+                self.log('mean_cross_entropy', loss, total_steps)
+
+            # do validation
 
             if total_steps > self.args.num_steps:
                 break
