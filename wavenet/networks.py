@@ -173,7 +173,7 @@ class ResidualStack(torch.nn.Module):
 
 
 class DensNet(torch.nn.Module):
-    def __init__(self, channels):
+    def __init__(self, channels, out_channels):
         """
         The last network of WaveNet
         :param channels: number of channels for input and output
@@ -182,10 +182,13 @@ class DensNet(torch.nn.Module):
         super(DensNet, self).__init__()
 
         self.conv1 = torch.nn.Conv1d(channels, channels, 1)
-        self.conv2 = torch.nn.Conv1d(channels, 1, 1)
+        self.conv2 = torch.nn.Conv1d(channels, out_channels, 1)
 
         self.relu = torch.nn.ReLU()
-        self.out_nonlin = torch.nn.Softmax(dim=1)
+        if out_channels == 1:
+            self.out_nonlin = torch.nn.Sigmoid()
+        else:
+            self.out_nonlin = torch.nn.Softmax(dim=1)
 
     def forward(self, x):
         output = self.relu(x)
@@ -200,13 +203,14 @@ class DensNet(torch.nn.Module):
 
 
 class WaveNetModule(torch.nn.Module):
-    def __init__(self, layer_size, stack_size, in_channels, res_channels):
+    def __init__(self, layer_size, stack_size, in_channels, res_channels, out_channels):
         """
         Stack residual blocks by layer and stack size
         :param layer_size: integer, 10 = layer[dilation=1, dilation=2, 4, 8, 16, 32, 64, 128, 256, 512]
         :param stack_size: integer, 5 = stack[layer1, layer2, layer3, layer4, layer5]
         :param in_channels: number of channels for input data. skip channel is same as input channel
         :param res_channels: number of residual channel for input, output
+        :param out_channels: number of final output channel
         :return:
         """
         super(WaveNetModule, self).__init__()
@@ -217,7 +221,7 @@ class WaveNetModule(torch.nn.Module):
 
         self.res_stack = ResidualStack(layer_size, stack_size, res_channels, in_channels)
 
-        self.densnet = DensNet(in_channels)
+        self.densnet = DensNet(in_channels, out_channels)
 
     @staticmethod
     def calc_receptive_fields(layer_size, stack_size):

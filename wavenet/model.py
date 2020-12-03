@@ -11,11 +11,12 @@ from wavenet.networks import WaveNetModule
 
 
 class WaveNet:
-    def __init__(self, layer_size, stack_size, in_channels, res_channels, lr=0.002):
+    def __init__(self, layer_size, stack_size, in_channels, res_channels, out_channels, lr=0.002):
 
-        self.net = WaveNetModule(layer_size, stack_size, in_channels, res_channels)
+        self.net = WaveNetModule(layer_size, stack_size, in_channels, res_channels, out_channels)
 
         self.in_channels = in_channels
+        self.out_channels = out_channels
         self.receptive_fields = self.net.receptive_fields
 
         self.lr = lr
@@ -24,9 +25,11 @@ class WaveNet:
 
         self._prepare_for_gpu()
 
-    @staticmethod
-    def _loss():
-        loss = torch.nn.BCEWithLogitsLoss()
+    def _loss(self):
+        if self.out_channels==1:
+            loss = torch.nn.BCEWithLogitsLoss()
+        else:
+            loss = torch.nn.CrossEntropyLoss()
 
         if torch.cuda.is_available():
             loss = loss.cuda()
@@ -53,8 +56,10 @@ class WaveNet:
         """
         outputs = self.net(inputs)
 
-        loss = self.loss(outputs.view(1,-1),
-                         targets)
+        if self.out_channels == 1:
+            loss = self.loss(outputs.view(1,-1), targets)
+        else:
+            loss = self.loss(outpus.view(-1,self.in_channels), targets.view(1,-1))
 
         self.optimizer.zero_grad()
         loss.backward()

@@ -16,7 +16,7 @@ class Trainer:
         self.args = args
 
         self.wavenet = WaveNet(args.layer_size, args.stack_size,
-                               args.in_channels, args.res_channels,
+                               args.in_channels, args.res_channels, args.out_channels,
                                lr=args.lr)
 
         self.data_loader = DataLoader_onset(args.data_dir, self.wavenet.receptive_fields, args.in_channels)

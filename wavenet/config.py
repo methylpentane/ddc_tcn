@@ -9,9 +9,10 @@ parser.add_argument('--layer_size', type=int, default=10,
                     help='layer_size: 10 = layer[dilation=1, dilation=2, 4, 8, 16, 32, 64, 128, 256, 512]')
 parser.add_argument('--stack_size', type=int, default=5,
                     help='stack_size: 5 = stack[layer1, layer2, layer3, layer4, layer5]')
-parser.add_argument('--in_channels', type=int, default=256,
+parser.add_argument('--in_channels', type=int, default=80,
                     help='input channel size. mu-law encode factor, one-hot size')
-parser.add_argument('--res_channels', type=int, default=512, help='number of channel for residual network')
+parser.add_argument('--res_channels', type=int, default=128, help='number of channel for residual network')
+parser.add_argument('--out_channels', type=int, default=1, help='number of channel for final output')
 
 parser.add_argument('--sample_rate', type=int, default=16000, help='Sampling rates for input sound')
 parser.add_argument('--sample_size', type=int, default=100000, help='Sample size for training input')
