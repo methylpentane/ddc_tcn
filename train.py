@@ -57,7 +57,7 @@ class Trainer:
                 total_steps += 1
 
                 print('[{0}/{1}] loss: {2}'.format(total_steps, args.num_steps, loss))
-                self.log('mean_cross_entropy', loss, total_steps)
+                self.log('train/mean_cross_entropy', loss, total_steps)
 
             # do validation
             print('validating...', end='')
@@ -70,8 +70,8 @@ class Trainer:
             epoch_metrics = {k: (np.mean(v), np.var(v)) for k, v in epoch_metrics.items()}
 
             for key, value in epoch_metrics.items():
-                self.log(key+'_mean', value[0], total_steps)
-                self.log(key+'_variance', value[1], total_steps)
+                self.log('valid/'+key+'_mean', value[0], total_steps)
+                self.log('valid/'+key+'_variance', value[1], total_steps)
             print('done')
 
             if total_steps > self.args.num_steps:
