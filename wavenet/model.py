@@ -8,8 +8,11 @@ import os
 
 import torch
 import torch.optim
+import numpy as np
 
 from wavenet.networks import WaveNetModule
+from wavenet.utils.util import find_pred_onsets, align_onsets_to_sklearn
+from sklearn.metrics import roc_curve, precision_recall_curve, auc, accuracy_score
 
 # original WaveNet {{{
 class WaveNet:
@@ -56,6 +59,9 @@ class WaveNet:
         :param targets: Torch tensor [batch, timestep, channels]
         :return: float loss
         """
+        if not self.net.training:
+            self.net.train()
+
         outputs = self.net(inputs)
 
         if self.out_channels == 1:
@@ -75,6 +81,9 @@ class WaveNet:
         :param inputs: Tensor[batch, timestep, channels]
         :return: Tensor[batch, timestep, channels]
         """
+        if self.net.training:
+            self.net.eval()
+
         with torch.no_grad():
             outputs = self.net(inputs)
 
@@ -121,14 +130,63 @@ class WaveNet_onset(WaveNet):
     def validation(self, inputs, targets):
         """
         validation 1 time
-        :param inputs: Tensor[batch, timestep, channels]
-        :param targets: tensor [batch, timestep, channels]
+        :param inputs: Tensor[batch=1, timestep, channels=1]
+        :param targets: tensor [batch=1, timestep]
         :return: metrics for 1 generation
         """
         result = self.generate(inputs)
+        # preprocess
+        result = np.squeeze(result.to('cpu').detach().numpy().copy())
+        targets = np.squeeze(targets.to('cpu').detach().numpy().copy())
+        assert result.shape == targets.shape
 
-        from IPython import embed
-        embed()
-        exit()
+        window = np.hamming(5)
+        predicted_onsets = find_pred_onsets(result, window)
+        true_onsets = set(np.where(targets == 1)[0].tolist())
+        y_true, y_scores_pkalgn = align_onsets_to_sklearn(true_onsets, predicted_onsets, result, tolerance=2)
+
+        # eval_metrics_for_scores(ddc onset_train.py)
+        nonsets = np.sum(y_true)
+        # calculate ROC curve
+        fprs, tprs, thresholds = roc_curve(y_true, y_scores_pkalgn)
+        auroc = auc(fprs, tprs)
+
+        # calculate PR curve
+        precisions, recalls, thresholds = precision_recall_curve(y_true, y_scores_pkalgn)
+        # https://github.com/scikit-learn/scikit-learn/issues/1423
+        auprc = auc(recalls, precisions)
+
+        # find best fscore and associated values
+        fscores_denom = precisions + recalls
+        fscores_denom[np.where(fscores_denom == 0.0)] = 1.0
+        fscores = (2 * (precisions * recalls)) / fscores_denom
+        fscore_max_idx = np.argmax(fscores)
+        precision, recall, fscore, threshold_ideal = precisions[fscore_max_idx], recalls[fscore_max_idx], fscores[fscore_max_idx], thresholds[fscore_max_idx]
+
+        # calculate density
+        predicted_steps = np.where(y_scores_pkalgn >= threshold_ideal)
+        density_rel = float(len(predicted_steps[0])) / float(nonsets)
+
+        # calculate accuracy
+        y_labels = np.zeros(y_scores_pkalgn.shape[0], dtype=np.int)
+        y_labels[predicted_steps] = 1
+        accuracy = accuracy_score(y_true.astype(np.int), y_labels)
+
+        # aggregate metrics
+        metrics = {}
+        metrics['auroc'] = auroc
+        metrics['auprc'] = auprc
+        metrics['fscore'] = fscore
+        metrics['precision'] = precision
+        metrics['recall'] = recall
+        metrics['threshold'] = threshold_ideal
+        metrics['accuracy'] = accuracy
+        metrics['density_rel'] = density_rel
+
+        # from IPython import embed
+        # embed()
+        # exit()
+
+        return metrics
 
 # }}}
