@@ -1,3 +1,5 @@
+# delete this line if you want disable fold option in vim.
+# vim:set foldmethod=marker:
 """
 Main model of WaveNet
 Calculate loss and optimizing
@@ -9,7 +11,7 @@ import torch.optim
 
 from wavenet.networks import WaveNetModule
 
-
+# original WaveNet {{{
 class WaveNet:
     def __init__(self, layer_size, stack_size, in_channels, res_channels, out_channels, lr=0.002):
 
@@ -73,7 +75,8 @@ class WaveNet:
         :param inputs: Tensor[batch, timestep, channels]
         :return: Tensor[batch, timestep, channels]
         """
-        outputs = self.net(inputs)
+        with torch.no_grad():
+            outputs = self.net(inputs)
 
         return outputs
 
@@ -106,3 +109,26 @@ class WaveNet:
 
         torch.save(self.net.state_dict(), model_path)
 
+# }}}
+# ddc wavenet {{{
+"""
+モデルは共通ではあるものの、validationにおいて最終的なonsetはしきい値処理という後処理工程を挟むので別クラス
+"""
+class WaveNet_onset(WaveNet):
+    def __init__(self, layer_size, stack_size, in_channels, res_channels, out_channels, lr=0.002):
+        super(WaveNet_onset, self).__init__(layer_size, stack_size, in_channels, res_channels, out_channels, lr)
+
+    def validation(self, inputs, targets):
+        """
+        validation 1 time
+        :param inputs: Tensor[batch, timestep, channels]
+        :param targets: tensor [batch, timestep, channels]
+        :return: metrics for 1 generation
+        """
+        result = self.generate(inputs)
+
+        from IPython import embed
+        embed()
+        exit()
+
+# }}}

@@ -7,7 +7,7 @@ from torch.utils.tensorboard import SummaryWriter
 from datetime import datetime
 
 import wavenet.config as config
-from wavenet.model import WaveNet
+from wavenet.model import WaveNet_onset
 from wavenet.utils.data import DataLoader_onset
 
 
@@ -15,12 +15,12 @@ class Trainer:
     def __init__(self, args):
         self.args = args
 
-        self.wavenet = WaveNet(args.layer_size, args.stack_size,
+        self.wavenet = WaveNet_onset(args.layer_size, args.stack_size,
                                args.in_channels, args.res_channels, args.out_channels,
                                lr=args.lr)
 
         self.data_loader = DataLoader_onset(args.data_dir, self.wavenet.receptive_fields, args.in_channels)
-        self.data_loader_valid = DataLoader_onset(args.data_dir, self.wavenet.receptive_fields, args.in_channels, valid=True)
+        self.data_loader_valid = DataLoader_onset(args.data_dir, self.wavenet.receptive_fields, args.in_channels, valid=True, shuffle=False)
         self.summary_writer = None if args.nolog else SummaryWriter(log_dir=args.log_dir)
 
     def infinite_batch(self): # deprecated by akiba. changed to whileTrue{one_epoch}
@@ -42,6 +42,7 @@ class Trainer:
         total_steps = 0
 
         while True:
+            # training for one epoch
             for inputs, targets in self.one_epoch_batch():
                 loss = self.wavenet.train(inputs, targets)
 
@@ -49,6 +50,8 @@ class Trainer:
 
                 print('[{0}/{1}] loss: {2}'.format(total_steps, args.num_steps, loss))
                 self.log('mean_cross_entropy', loss, total_steps)
+
+                self.wavenet.validation(inputs, targets)
 
             # do validation
 
