@@ -67,7 +67,8 @@ class ResidualBlock(torch.nn.Module):
         """
         super(ResidualBlock, self).__init__()
 
-        self.dilated = DilatedCausalConv1d(res_channels, dilation=dilation)
+        self.dilatedconv_t = DilatedCausalConv1d(res_channels, dilation=dilation)
+        self.dilatedconv_s = DilatedCausalConv1d(res_channels, dilation=dilation)
         self.conv_res = torch.nn.Conv1d(res_channels, res_channels, 1)
         self.conv_skip = torch.nn.Conv1d(res_channels, skip_channels, 1)
 
@@ -80,11 +81,12 @@ class ResidualBlock(torch.nn.Module):
         :param skip_size: The last output size for loss and prediction
         :return:
         """
-        output = self.dilated(x)
+        out_t = self.dilatedconv_t(x)
+        out_s = self.dilatedconv_s(x)
 
         # PixelCNN gate
-        gated_tanh = self.gate_tanh(output)
-        gated_sigmoid = self.gate_sigmoid(output)
+        gated_tanh = self.gate_tanh(out_t)
+        gated_sigmoid = self.gate_sigmoid(out_s)
         gated = gated_tanh * gated_sigmoid
 
         # Residual network
@@ -113,7 +115,8 @@ class ResidualStack(torch.nn.Module):
 
         self.layer_size = layer_size
         self.stack_size = stack_size
-#
+
+# for statement style stacking -> use ModuleList
 #        self.res_blocks = self.stack_res_block(res_channels, skip_channels)
 #
 #    @staticmethod
@@ -140,7 +143,7 @@ class ResidualStack(torch.nn.Module):
                 dilations.append(2 ** l)
 
         return dilations
-#
+# for statement style stacking -> use ModuleList
 #    def stack_res_block(self, res_channels, skip_channels):
 #        """
 #        Prepare dilated convolution blocks by layer and stack size
