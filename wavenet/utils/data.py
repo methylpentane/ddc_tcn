@@ -229,6 +229,7 @@ class DataLoader_onset(data.DataLoader):
 
         # self.sample_size = sample_size
         self.receptive_fields = receptive_fields
+        self.diffs = ['Beginner', 'Easy', 'Medium', 'Hard', 'Challenge']
 
         self.collate_fn = self._collate_fn
 
@@ -246,29 +247,41 @@ class DataLoader_onset(data.DataLoader):
 
     def _collate_fn(self, files):
         song_feat_batch = []
-        chart_batch = []
+        target_batch_iter = []
+        diff_batch_iter = []
         for file in files:
-            # 今はbatch_size:1を想定、そうでないと曲によって長さが違うのでちょっと処理が面倒になる
+            # 今はbatch_size:1を想定、このfor文は一回しか回らない。そうでないと曲によって長さが違うのでちょっと処理が面倒になる
             song_meta, song_feat, charts = file
             # song_feat
             song_feat = np.squeeze(song_feat[:, :, 0:1]) # select first channel for now #TODO selective channel
             song_feat_batch.append(song_feat)
             # chart
+            # for chart in charts:
+            #     coarse_diff = chart.get_coarse_difficulty()
+            #     if coarse_diff == "Challenge":
+            #         chart_batch.append(chart)
+            #         break
             for chart in charts:
-                coarse_diff = chart.get_coarse_difficulty()
-                if coarse_diff == "Challenge":
-                    chart_batch.append(chart)
-                    break
+                target = [int(frame_idx in chart.onsets) for frame_idx in range(chart.nframes)]
+                target_batch = np.array([target])
+                target_batch_iter.append(target_batch)
+                diff_batch = np.zeros((1,5))
+                diff_batch[0][self.diffs.index(chart.get_coarse_difficulty())] = 1.0
+                diff_batch_iter.append(diff_batch)
+                # iter [target] in one music.
+                # iter [onehot] in one music.
 
-        target_batch = []
-        for chart in chart_batch: # batch_size=1 batch次元が必要なので形式上のfor文
-            target = [int(frame_idx in chart.onsets) for frame_idx in range(chart.nframes)]
-            target_batch.append(target)
+
+        # target_batch = []
+        # for chart in chart_batch: # batch_size=1 batch次元が必要なので形式上のfor文
+        #     target = [int(frame_idx in chart.onsets) for frame_idx in range(chart.nframes)]
+        #     target_batch.append(target)
 
         song_feat_batch = np.array(song_feat_batch)
         song_feat_batch = np.pad(song_feat_batch, [[0, 0], [self.receptive_fields, 0], [0, 0]], 'constant')
-        target_batch = np.array(target_batch)
 
         # オリジナル実装では、sample_sizeを制限すると曲を刻んでyieldするので、それに合わせてyieldになっている。
-        yield self._variable(song_feat_batch), self._variable(target_batch)
+        # (更新)target_batchの中に一曲のchartをすべて入れてイテレーションをする。もともとあったyieldをそのまま利用する
+        for target_batch, diff_batch in zip(target_batch_iter, diff_batch_iter):
+            yield (self._variable(song_feat_batch), self._variable(diff_batch)), self._variable(target_batch)
 # }}}

@@ -58,31 +58,42 @@ class CausalConv1d(torch.nn.Module):
 
 
 class ResidualBlock(torch.nn.Module):
-    def __init__(self, res_channels, skip_channels, dilation):
+    def __init__(self, res_channels, skip_channels, gc_channels, dilation):
         """
         Residual block
         :param res_channels: number of residual channel for input, output
         :param skip_channels: number of skip channel for output
+        :param gc_channels: number of input channel for global conditioning. 0 for disable gc
         :param dilation:
         """
         super(ResidualBlock, self).__init__()
+        self.gc_channels = gc_channels
 
         self.dilatedconv_t = DilatedCausalConv1d(res_channels, dilation=dilation)
         self.dilatedconv_s = DilatedCausalConv1d(res_channels, dilation=dilation)
+        if gc_channels > 0:
+            self.gc_conv_t = torch.nn.Conv1d(gc_channels, res_channels, 1)
+            self.gc_conv_s = torch.nn.Conv1d(gc_channels, res_channels, 1)
         self.conv_res = torch.nn.Conv1d(res_channels, res_channels, 1)
         self.conv_skip = torch.nn.Conv1d(res_channels, skip_channels, 1)
 
         self.gate_tanh = torch.nn.Tanh()
         self.gate_sigmoid = torch.nn.Sigmoid()
 
-    def forward(self, x, skip_size):
+    def forward(self, x, skip_size, gc=None):
         """
         :param x:
         :param skip_size: The last output size for loss and prediction
+        :param gc: tensor for global conditioning(time=1)
         :return:
         """
         out_t = self.dilatedconv_t(x)
         out_s = self.dilatedconv_s(x)
+
+        # global conditioning
+        if self.gc_channels > 0:
+            out_t = out_t + self.gc_conv_t(gc)
+            out_s = out_s + self.gc_conv_s(gc)
 
         # PixelCNN gate
         gated_tanh = self.gate_tanh(out_t)
@@ -95,20 +106,21 @@ class ResidualBlock(torch.nn.Module):
         output += input_cut
 
         # Skip connection
-        skip = self.conv_skip(gated)
-        skip = skip[:, :, -skip_size:]
+        skip = gated[:, :, -skip_size:]
+        skip = self.conv_skip(skip)
 
         return output, skip
 
 
 class ResidualStack(torch.nn.Module):
-    def __init__(self, layer_size, stack_size, res_channels, skip_channels):
+    def __init__(self, layer_size, stack_size, res_channels, skip_channels, gc_channels):
         """
         Stack residual blocks by layer and stack size
         :param layer_size: integer, 10 = layer[dilation=1, dilation=2, 4, 8, 16, 32, 64, 128, 256, 512]
         :param stack_size: integer, 5 = stack[layer1, layer2, layer3, layer4, layer5]
         :param res_channels: number of residual channel for input, output
         :param skip_channels: number of skip channel for output
+        :param gc_channels: number of input channel for global conditioning. 0 for disable gc
         :return:
         """
         super(ResidualStack, self).__init__()
@@ -131,7 +143,7 @@ class ResidualStack(torch.nn.Module):
 #
 #        return block
         self.dilations = self.build_dilations()
-        self.res_blocks = torch.nn.ModuleList([ResidualBlock(res_channels, skip_channels, dilation) for dilation in self.dilations])
+        self.res_blocks = torch.nn.ModuleList([ResidualBlock(res_channels, skip_channels, gc_channels, dilation) for dilation in self.dilations])
 
     def build_dilations(self):
         dilations = []
@@ -158,10 +170,11 @@ class ResidualStack(torch.nn.Module):
 #
 #        return res_blocks
 #
-    def forward(self, x, skip_size):
+    def forward(self, x, skip_size, gc=None):
         """
         :param x:
         :param skip_size: The last output size for loss and prediction
+        :param gc: tensor for global conditioning(time=1)
         :return:
         """
         output = x
@@ -169,7 +182,7 @@ class ResidualStack(torch.nn.Module):
 
         for res_block in self.res_blocks:
             # output is the next input
-            output, skip = res_block(output, skip_size)
+            output, skip = res_block(output, skip_size, gc)
             skip_connections.append(skip)
 
         return torch.stack(skip_connections)
@@ -206,7 +219,7 @@ class DensNet(torch.nn.Module):
 
 
 class WaveNetModule(torch.nn.Module):
-    def __init__(self, layer_size, stack_size, in_channels, res_channels, out_channels):
+    def __init__(self, layer_size, stack_size, in_channels, res_channels, out_channels, gc_channels):
         """
         Stack residual blocks by layer and stack size
         :param layer_size: integer, 10 = layer[dilation=1, dilation=2, 4, 8, 16, 32, 64, 128, 256, 512]
@@ -214,6 +227,7 @@ class WaveNetModule(torch.nn.Module):
         :param in_channels: number of channels for input data. skip channel is same as input channel
         :param res_channels: number of residual channel for input, output
         :param out_channels: number of final output channel
+        :param gc_channels: number of input channel for global conditioning. 0 for disable gc
         :return:
         """
         super(WaveNetModule, self).__init__()
@@ -222,7 +236,7 @@ class WaveNetModule(torch.nn.Module):
 
         self.causal = CausalConv1d(in_channels, res_channels)
 
-        self.res_stack = ResidualStack(layer_size, stack_size, res_channels, in_channels)
+        self.res_stack = ResidualStack(layer_size, stack_size, res_channels, in_channels, gc_channels)
 
         self.densnet = DensNet(in_channels, out_channels)
 
@@ -244,19 +258,22 @@ class WaveNetModule(torch.nn.Module):
         if output_size < 1:
             raise InputSizeError(int(x.size(2)), self.receptive_fields, output_size)
 
-    def forward(self, x):
+    def forward(self, x, gc=None):
         """
         The size of timestep(3rd dimention) has to be bigger than receptive fields
         :param x: Tensor[batch, timestep, channels]
+        :param gc: Tensor[batch, channels]
         :return: Tensor[batch, timestep, channels]
         """
-        output = x.transpose(1, 2)
+        output = x.transpose(1, 2) # [ntc -> nct]
+        if gc is not None:
+            gc = gc.unsqueeze(2) # pseudo timestep
 
         output_size = self.calc_output_size(output)
 
         output = self.causal(output)
 
-        skip_connections = self.res_stack(output, output_size)
+        skip_connections = self.res_stack(output, output_size, gc)
 
         output = torch.sum(skip_connections, dim=0)
 

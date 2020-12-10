@@ -19,7 +19,7 @@ class Trainer:
 
         self.wavenet = WaveNet_onset(args.layer_size, args.stack_size,
                                args.in_channels, args.res_channels, args.out_channels,
-                               lr=args.lr)
+                               args.gc_channels, lr=args.lr)
 
         self.data_loader = DataLoader_onset(args.data_dir, self.wavenet.receptive_fields, args.in_channels)
         self.data_loader_valid = DataLoader_onset(args.data_dir, self.wavenet.receptive_fields, args.in_channels, valid=True, shuffle=False)
@@ -52,7 +52,12 @@ class Trainer:
             # training for one epoch
             print('training for one epoch')
             for inputs, targets in self.one_epoch_batch():
-                loss = self.wavenet.train(inputs, targets)
+                if self.args.gc_channels:
+                    inputs, gc_inputs = inputs
+                else:
+                    gc_inputs = None
+
+                loss = self.wavenet.train(inputs, targets, gc_inputs)
 
                 total_steps += 1
 
@@ -63,7 +68,11 @@ class Trainer:
             print('validating...', end='')
             epoch_metrics = defaultdict(list)
             for inputs, targets in self.one_epoch_batch_valid():
-                metrics = self.wavenet.validation(inputs, targets)
+                if self.args.gc_channels:
+                    inputs, gc_inputs = inputs
+                else:
+                    gc_inputs = None
+                metrics = self.wavenet.validation(inputs, targets, gc_inputs)
                 for metrics_key, metrics_value in metrics.items():
                     epoch_metrics[metrics_key].append(metrics_value)
 

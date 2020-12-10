@@ -8,7 +8,8 @@ with open(fp, 'rb') as f:
 	file = pickle.load(f)
 
 print("pickle file as \'file\'")
-print(file)
+for chart in file[2]:
+    print(chart.get_coarse_difficulty())
 # embed()
 # exit()
 # mean_song_feature = numpy.mean(song_feature, axis=0)

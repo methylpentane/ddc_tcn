@@ -16,12 +16,13 @@ from sklearn.metrics import roc_curve, precision_recall_curve, auc, accuracy_sco
 
 # original WaveNet {{{
 class WaveNet:
-    def __init__(self, layer_size, stack_size, in_channels, res_channels, out_channels, lr=0.002):
+    def __init__(self, layer_size, stack_size, in_channels, res_channels, out_channels, gc_channels, lr=0.002):
 
-        self.net = WaveNetModule(layer_size, stack_size, in_channels, res_channels, out_channels)
+        self.net = WaveNetModule(layer_size, stack_size, in_channels, res_channels, out_channels, gc_channels)
 
         self.in_channels = in_channels
         self.out_channels = out_channels
+        self.gc_channels = gc_channels
         self.receptive_fields = self.net.receptive_fields
 
         self.lr = lr
@@ -52,22 +53,28 @@ class WaveNet:
         if torch.cuda.is_available():
             self.net.cuda()
 
-    def train(self, inputs, targets):
+    def train(self, inputs, targets, gc_inputs=None):
         """
         Train 1 time
         :param inputs: Tensor[batch, timestep, channels]
         :param targets: Torch tensor [batch, timestep, channels]
+        :param gc_inputs: Tensor[batch, channels]
         :return: float loss
         """
         if not self.net.training:
             self.net.train()
 
-        outputs = self.net(inputs)
+        if gc_inputs is not None:
+            assert gc_inputs.shape[1] == self.gc_channels
+        else:
+            assert self.gc_channels == 0
+
+        outputs = self.net(inputs, gc_inputs)
 
         if self.out_channels == 1:
             loss = self.loss(outputs.view(1,-1), targets)
         else:
-            loss = self.loss(outpus.view(-1,self.in_channels), targets.view(1,-1))
+            loss = self.loss(outpus.view(-1,self.in_channels).long(), targets.view(1,-1))
 
         self.optimizer.zero_grad()
         loss.backward()
@@ -75,17 +82,23 @@ class WaveNet:
 
         return loss.item()
 
-    def generate(self, inputs):
+    def generate(self, inputs, gc_inputs=None):
         """
         Generate 1 time
         :param inputs: Tensor[batch, timestep, channels]
+        :param gc_inputs: Tensor[batch, channels]
         :return: Tensor[batch, timestep, channels]
         """
         if self.net.training:
             self.net.eval()
 
+        if gc_inputs is not None:
+            assert gc_inputs.shape[1] == self.gc_channels
+        else:
+            assert self.gc_channels == 0
+
         with torch.no_grad():
-            outputs = self.net(inputs)
+            outputs = self.net(inputs, gc_inputs)
 
         return outputs
 
@@ -124,17 +137,23 @@ class WaveNet:
 モデルは共通ではあるものの、validationにおいて最終的なonsetはしきい値処理という後処理工程を挟むので別クラス
 """
 class WaveNet_onset(WaveNet):
-    def __init__(self, layer_size, stack_size, in_channels, res_channels, out_channels, lr=0.002):
-        super(WaveNet_onset, self).__init__(layer_size, stack_size, in_channels, res_channels, out_channels, lr)
+    def __init__(self, layer_size, stack_size, in_channels, res_channels, out_channels, gc_channels, lr=0.002):
+        super(WaveNet_onset, self).__init__(layer_size, stack_size, in_channels, res_channels, out_channels, gc_channels, lr)
 
-    def validation(self, inputs, targets):
+    def validation(self, inputs, targets, gc_inputs=None):
         """
         validation 1 time
         :param inputs: Tensor[batch=1, timestep, channels=1]
         :param targets: tensor [batch=1, timestep]
+        :param gc_inputs: Tensor[batch, channels]
         :return: metrics for 1 generation
         """
-        result = self.generate(inputs)
+        if gc_inputs is not None:
+            assert gc_inputs.shape[1] == self.gc_channels
+        else:
+            assert self.gc_channels == 0
+        result = self.generate(inputs, gc_inputs)
+
         # preprocess
         result = np.squeeze(result.to('cpu').detach().numpy().copy())
         targets = np.squeeze(targets.to('cpu').detach().numpy().copy())

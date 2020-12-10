@@ -1,4 +1,5 @@
 .DS_Store
+.rsync_autocmd
 __pycache__
 .cache
 .idea
