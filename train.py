@@ -21,8 +21,8 @@ class Trainer:
                                args.in_channels, args.res_channels, args.out_channels,
                                args.gc_channels, lr=args.lr)
 
-        self.data_loader = DataLoader_onset(args.data_dir, self.wavenet.receptive_fields, args.in_channels)
-        self.data_loader_valid = DataLoader_onset(args.data_dir, self.wavenet.receptive_fields, args.in_channels, valid=True, shuffle=False)
+        self.data_loader = DataLoader_onset(args.data_dir, self.wavenet.receptive_fields, args.ddc_channel_select, args.in_channels)
+        self.data_loader_valid = DataLoader_onset(args.data_dir, self.wavenet.receptive_fields, args.ddc_channel_select, args.in_channels, valid=True, shuffle=False)
         self.summary_writer = None if args.nolog else SummaryWriter(log_dir=args.log_dir)
 
     def infinite_batch(self): # deprecated by akiba. changed to whileTrue{one_epoch}
@@ -86,7 +86,7 @@ class Trainer:
             if total_steps > self.args.num_steps:
                 break
 
-        self.wavenet.save(args.model_dir)
+        # self.wavenet.save(args.model_dir)
 
 
 def prepare_output_dir(args):

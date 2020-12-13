@@ -12,8 +12,7 @@ import torch
 import torch.utils.data as data
 
 import pickle
-
-from IPython import embed
+import random
 
 # general audio methods {{{
 def load_audio(filename, sample_rate=16000, trim=True, trim_frame_length=2048):
@@ -169,11 +168,10 @@ class DataLoader(data.DataLoader):
     input: spectrum (one channel from original data)
     output: onset prediction(0~1, 1channel)
 
-    data_dir -> ddc's chart_onset/mel80hop441
-    train.txtとかが入っているがこれは消しておく
-    とりあえずで動かしたいので
+    data_dir -> ddc's chart_onset/mel80hop441 (delete text file)
+    曲の長さがだいたい同じだけどまちまちだから、
         * バッチサイズ１(一曲ずつ読み込む)
-        * サンプルサイズ＝一曲まるまる(音ゲーなので差はあれど長さはほとんど同じとみなす)
+        * サンプルサイズ＝一曲まるまる
     """
 
 class Dataset_onset(data.Dataset):
@@ -199,7 +197,7 @@ class Dataset_onset(data.Dataset):
 
 
 class DataLoader_onset(data.DataLoader):
-    def __init__(self, data_dir, receptive_fields, in_channels=80,
+    def __init__(self, data_dir, receptive_fields, ddc_channel_select, in_channels=80,
                  batch_size=1, shuffle=True, valid=False):
         """
         DataLoader for WaveNet
@@ -209,6 +207,7 @@ class DataLoader_onset(data.DataLoader):
                             |-- receptive field --|---------------------|
                             |------- samples -------------------|
                             |---------------------|-- outputs --|
+        :param ddc_channel_select: select channel of ddc input melspectrogram.
         :param in_channels: number of input channels
         :param batch_size:
         :param shuffle:
@@ -229,6 +228,7 @@ class DataLoader_onset(data.DataLoader):
 
         # self.sample_size = sample_size
         self.receptive_fields = receptive_fields
+        self.ddc_channel_select = ddc_channel_select
         self.diffs = ['Beginner', 'Easy', 'Medium', 'Hard', 'Challenge']
 
         self.collate_fn = self._collate_fn
@@ -250,18 +250,14 @@ class DataLoader_onset(data.DataLoader):
         target_batch_iter = []
         diff_batch_iter = []
         for file in files:
-            # 今はbatch_size:1を想定、このfor文は一回しか回らない。そうでないと曲によって長さが違うのでちょっと処理が面倒になる
+            # batch_size:1だからこのfor文は一回しか回らない。
             song_meta, song_feat, charts = file
             # song_feat
-            song_feat = np.squeeze(song_feat[:, :, 0:1]) # select first channel for now #TODO selective channel
+            song_feat = song_feat[:, :, self.ddc_channel_select] # slice selected channel
+            song_feat = song_feat.reshape(-1, song_feat.shape[1]*song_feat.shape[2]) # [time, freq*channel]
             song_feat_batch.append(song_feat)
             # chart
-            # for chart in charts:
-            #     coarse_diff = chart.get_coarse_difficulty()
-            #     if coarse_diff == "Challenge":
-            #         chart_batch.append(chart)
-            #         break
-            for chart in charts:
+            for chart in random.sample(charts, len(charts)):
                 target = [int(frame_idx in chart.onsets) for frame_idx in range(chart.nframes)]
                 target_batch = np.array([target])
                 target_batch_iter.append(target_batch)
@@ -271,11 +267,9 @@ class DataLoader_onset(data.DataLoader):
                 # iter [target] in one music.
                 # iter [onehot] in one music.
 
-
-        # target_batch = []
-        # for chart in chart_batch: # batch_size=1 batch次元が必要なので形式上のfor文
-        #     target = [int(frame_idx in chart.onsets) for frame_idx in range(chart.nframes)]
-        #     target_batch.append(target)
+        # from IPython import embed
+        # embed()
+        # exit()
 
         song_feat_batch = np.array(song_feat_batch)
         song_feat_batch = np.pad(song_feat_batch, [[0, 0], [self.receptive_fields, 0], [0, 0]], 'constant')
