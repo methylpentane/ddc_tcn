@@ -6,6 +6,7 @@ import os
 from torch.utils.tensorboard import SummaryWriter
 from datetime import datetime
 from collections import defaultdict
+from textwrap import dedent
 import numpy as np
 
 import wavenet.config as config
@@ -24,6 +25,24 @@ class Trainer:
         self.data_loader = DataLoader_onset(args.data_dir, self.wavenet.receptive_fields, args.ddc_channel_select, args.in_channels)
         self.data_loader_valid = DataLoader_onset(args.data_dir, self.wavenet.receptive_fields, args.ddc_channel_select, args.in_channels, valid=True, shuffle=False)
         self.summary_writer = None if args.nolog else SummaryWriter(log_dir=args.log_dir)
+        # log hparams
+        text = '''\
+        #### comment: {comment}
+        |layer|stack|in|residual|out|global condition|lr|STFT_window_selection|
+        |----|----|----|----|----|----|----|----|
+        |{layer}|{stack}|{in_}|{res}|{out}|{gc}|{lr}|{stft}|\
+        '''.format(
+            comment=' '.join(args.comment),
+            layer=str(args.layer_size),
+            stack=str(args.stack_size),
+            in_=str(args.in_channels),
+            res=str(args.res_channels),
+            out=str(args.out_channels),
+            gc=str(args.gc_channels),
+            lr=str(args.lr),
+            stft=','.join([str(_) for _ in args.ddc_channel_select]))
+        if self.summary_writer is not None:
+            self.summary_writer.add_text('condition', dedent(text))
 
     def infinite_batch(self): # deprecated by akiba. changed to whileTrue{one_epoch}
         while True:
@@ -90,7 +109,8 @@ class Trainer:
 
 
 def prepare_output_dir(args):
-    log_dirname = 'log_' + datetime.strftime(datetime.now(), '%y%m%d%H%M%S')
+    now = datetime.now()
+    log_dirname = datetime.strftime(now, '%m月%d日') + '/' + datetime.strftime(now, '%H:%M:%S')
     args.log_dir = os.path.join(args.output_dir, log_dirname)
     args.model_dir = os.path.join(args.output_dir, 'model')
     args.test_output_dir = os.path.join(args.output_dir, 'test')

@@ -19,6 +19,7 @@ parser.add_argument('--ddc_channel_select', type=int, nargs='+', default=[0], he
 parser.add_argument('--sample_rate', type=int, default=16000, help='Sampling rates for input sound. this is for original wavenet')
 parser.add_argument('--sample_size', type=int, default=100000, help='Sample size for training input this is for original wavenet')
 parser.add_argument('--nolog', action='store_true', default=False, help='if True, tensorboard logging wont run')
+parser.add_argument('--comment', type=str, nargs='+', default=[''], help='other comment you want to record to tensorboard')
 
 
 def parse_args(is_training=True):
