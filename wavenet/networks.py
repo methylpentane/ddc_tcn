@@ -1,3 +1,5 @@
+# delete this line if you want disable fold option in vim.
+# vim:set foldmethod=marker:
 """
 Neural network modules for WaveNet
 
@@ -12,7 +14,7 @@ import numpy as np
 
 from wavenet.exceptions import InputSizeError
 
-
+# DilatedCausalConv1d {{{
 class DilatedCausalConv1d(torch.nn.Module):
     """Dilated Causal Convolution for WaveNet"""
     def __init__(self, channels, dilation=1):
@@ -33,8 +35,8 @@ class DilatedCausalConv1d(torch.nn.Module):
         output = self.conv(x)
 
         return output
-
-
+# }}}
+# CausalConv1d {{{
 class CausalConv1d(torch.nn.Module):
     """Causal Convolution for WaveNet"""
     def __init__(self, in_channels, out_channels):
@@ -55,8 +57,8 @@ class CausalConv1d(torch.nn.Module):
 
         # remove last value for causal convolution
         return output[:, :, :-1]
-
-
+# }}}
+# ResidualBlock {{{
 class ResidualBlock(torch.nn.Module):
     def __init__(self, res_channels, skip_channels, gc_channels, dilation):
         """
@@ -110,8 +112,8 @@ class ResidualBlock(torch.nn.Module):
         skip = self.conv_skip(skip)
 
         return output, skip
-
-
+# }}}
+# ResidualStack {{{
 class ResidualStack(torch.nn.Module):
     def __init__(self, layer_size, stack_size, res_channels, skip_channels, gc_channels):
         """
@@ -128,20 +130,6 @@ class ResidualStack(torch.nn.Module):
         self.layer_size = layer_size
         self.stack_size = stack_size
 
-# for statement style stacking -> use ModuleList
-#        self.res_blocks = self.stack_res_block(res_channels, skip_channels)
-#
-#    @staticmethod
-#    def _residual_block(res_channels, skip_channels, dilation):
-#        block = ResidualBlock(res_channels, skip_channels, dilation)
-#
-#        if torch.cuda.device_count() > 1:
-#            block = torch.nn.DataParallel(block)
-#
-#        if torch.cuda.is_available():
-#            block.cuda()
-#
-#        return block
         self.dilations = self.build_dilations()
         self.res_blocks = torch.nn.ModuleList([ResidualBlock(res_channels, skip_channels, gc_channels, dilation) for dilation in self.dilations])
 
@@ -155,21 +143,7 @@ class ResidualStack(torch.nn.Module):
                 dilations.append(2 ** l)
 
         return dilations
-# for statement style stacking -> use ModuleList
-#    def stack_res_block(self, res_channels, skip_channels):
-#        """
-#        Prepare dilated convolution blocks by layer and stack size
-#        :return:
-#        """
-#        res_blocks = []
-#        dilations = self.build_dilations()
-#
-#        for dilation in dilations:
-#            block = self._residual_block(res_channels, skip_channels, dilation)
-#            res_blocks.append(block)
-#
-#        return res_blocks
-#
+
     def forward(self, x, skip_size, gc=None):
         """
         :param x:
@@ -186,10 +160,10 @@ class ResidualStack(torch.nn.Module):
             skip_connections.append(skip)
 
         return torch.stack(skip_connections)
-
-
+# }}}
+# DensNet {{{
 class DensNet(torch.nn.Module):
-    def __init__(self, channels, out_channels):
+    def __init__(self, channels, out_channels, input_scale):
         """
         The last network of WaveNet
         :param channels: number of channels for input and output
@@ -198,7 +172,7 @@ class DensNet(torch.nn.Module):
         super(DensNet, self).__init__()
 
         self.conv1 = torch.nn.Conv1d(channels, channels, 1)
-        self.conv2 = torch.nn.Conv1d(channels, out_channels, 1)
+        self.conv2 = torch.nn.Conv1d(channels, out_channels, kernel_size=input_scale, stride=input_scale)
 
         self.relu = torch.nn.ReLU()
         if out_channels == 1:
@@ -216,10 +190,10 @@ class DensNet(torch.nn.Module):
             output = self.out_nonlin(output)
 
         return output
-
-
+# }}}
+# WaveNetModule {{{
 class WaveNetModule(torch.nn.Module):
-    def __init__(self, layer_size, stack_size, in_channels, res_channels, out_channels, gc_channels):
+    def __init__(self, layer_size, stack_size, in_channels, res_channels, out_channels, gc_channels, input_scale):
         """
         Stack residual blocks by layer and stack size
         :param layer_size: integer, 10 = layer[dilation=1, dilation=2, 4, 8, 16, 32, 64, 128, 256, 512]
@@ -228,6 +202,7 @@ class WaveNetModule(torch.nn.Module):
         :param res_channels: number of residual channel for input, output
         :param out_channels: number of final output channel
         :param gc_channels: number of input channel for global conditioning. 0 for disable gc
+        :param input_scale: = input_size / output_size
         :return:
         """
         super(WaveNetModule, self).__init__()
@@ -238,7 +213,7 @@ class WaveNetModule(torch.nn.Module):
 
         self.res_stack = ResidualStack(layer_size, stack_size, res_channels, in_channels, gc_channels)
 
-        self.densnet = DensNet(in_channels, out_channels)
+        self.densnet = DensNet(in_channels, out_channels, input_scale)
 
     @staticmethod
     def calc_receptive_fields(layer_size, stack_size):
@@ -280,4 +255,4 @@ class WaveNetModule(torch.nn.Module):
         output = self.densnet(output)
 
         return output.transpose(1, 2).contiguous()
-
+# }}}

@@ -5,7 +5,7 @@ Show raw audio and mu-law encode samples to make input source
 """
 import os,sys
 
-# import librosa # use only for raw audio input.
+import librosa
 import numpy as np
 
 import torch
@@ -168,7 +168,8 @@ class DataLoader(data.DataLoader):
     input: spectrum (one channel from original data)
     output: onset prediction(0~1, 1channel)
 
-    data_dir -> ddc's chart_onset/mel80hop441 (delete text file)
+    data_dir -> ddc's chart_onset/mel80hop441
+    chartファイル生成後に入ってるtrain.txtとかは消しておく
     曲の長さがだいたい同じだけどまちまちだから、
         * バッチサイズ１(一曲ずつ読み込む)
         * サンプルサイズ＝一曲まるまる
@@ -182,7 +183,7 @@ class Dataset_onset(data.Dataset):
         self.trim = trim
 
         self.root_path = data_dir
-        self.filenames = [x for x in sorted(os.listdir(self.root_path)) if 'pkl' in x]
+        self.filenames = [x for x in sorted(os.listdir(self.root_path)) if x.split('.')[-1] == 'pkl']
 
     def __getitem__(self, index):
         filepath = os.path.join(self.root_path, self.filenames[index])
@@ -274,8 +275,169 @@ class DataLoader_onset(data.DataLoader):
         song_feat_batch = np.array(song_feat_batch)
         song_feat_batch = np.pad(song_feat_batch, [[0, 0], [self.receptive_fields, 0], [0, 0]], 'constant')
 
-        # オリジナル実装では、sample_sizeを制限すると曲を刻んでyieldするので、それに合わせてyieldになっている。
-        # (更新)target_batchの中に一曲のchartをすべて入れてイテレーションをする。もともとあったyieldをそのまま利用する
+        # raw_audioモデルでは、sample_sizeを制限すると曲を刻んでyieldするので、それに合わせてyieldになっている。
+        # target_batch_iterというリストの中に一曲のchartをすべて入れてイテレーションをするので、結果的にyieldを利用する
         for target_batch, diff_batch in zip(target_batch_iter, diff_batch_iter):
             yield (self._variable(song_feat_batch), self._variable(diff_batch)), self._variable(target_batch)
+# }}}
+# Dataset class (ddc_onsetnet_with_raw_audio){{{
+    """
+    input: raw_audio (one channel from original data)
+    output: onset prediction(0~1, 1channel)
+
+    data_dir -> ddc's chart_onset/mel80hop441
+    chartファイル生成後に入ってるtrain.txtとかは消しておく
+
+    * このフォルダの中に、生音源.oggもまとめて入れて、拡張子で場合分けしたファイルリストを作る(これならspectreと競合しない)
+    * 16000Hzのまま読み込むので、パラメータによってsample_sizeによる切り分けを必要とする、その際frame_rateの兼ね合いで、指定したsample_sizeでピッタリにはならない
+    * また、sample_sizeはさらに入力値+self.receptive_fieldsとする。オリジナルでは、sample_sizeがすでにreceptive_fieldsを含んでいるとする
+    """
+
+class Dataset_onset_raw(data.Dataset):
+    def __init__(self, data_dir, sample_rate=16000, in_channels=256, trim=False): #no trim for match timestep
+        super(Dataset_onset_raw, self).__init__()
+
+        self.in_channels = in_channels
+        self.sample_rate = sample_rate
+        self.trim = trim
+
+        self.root_path = data_dir
+        self.filenames_chart = [x for x in sorted(os.listdir(self.root_path)) if x.split('.')[-1] == 'pkl']
+        self.filenames_audio = [x for x in sorted(os.listdir(self.root_path)) if x.split('.')[-1] == 'ogg']
+
+    def __getitem__(self, index):
+        filepath_chart = os.path.join(self.root_path, self.filenames_chart[index])
+        filepath_audio = os.path.join(self.root_path, self.filenames_audio[index])
+
+        with open(filepath_chart, 'rb') as f:
+            file_chart = pickle.load(f)
+
+        raw_audio = load_audio(filepath_audio, self.sample_rate, self.trim)
+        encoded_audio = mu_law_encode(raw_audio, self.in_channels)
+        encoded_audio = one_hot_encode(encoded_audio, self.in_channels)
+
+        item = (file_chart, encoded_audio)
+        return item
+
+    def __len__(self):
+        return len(self.filenames_chart)
+
+
+class DataLoader_onset_raw(data.DataLoader):
+    def __init__(self, data_dir, receptive_fields,
+                 sample_size=0, sample_rate=16000, chart_sample_rate=100, in_channels=256,
+                 batch_size=1, shuffle=True, valid=False):
+        """
+        DataLoader for WaveNet
+        :param data_dir:
+        :param receptive_fields: integer. size(length) of receptive fields
+                            sample size has to be bigger than receptive fields.
+                            |-- receptive field --|---------------------|
+                            |------- samples -------------------|
+                            |---------------------|-- outputs --|
+        :param ddc_channel_select: select channel of ddc input melspectrogram.
+        :param in_channels: number of input channels
+        :param batch_size:
+        :param shuffle:
+        """
+        # add validation feature. if valid=True, this is dataloader for validation
+        dataset = Dataset_onset_raw(data_dir, sample_rate, in_channels)
+        dataset_size = len(dataset)
+        train_size = int(dataset_size*0.9)
+        if valid==False:
+            dataset = data.dataset.Subset(dataset, list(range(train_size)))
+        else:
+            dataset = data.dataset.Subset(dataset, list(range(train_size, dataset_size)))
+
+        super(DataLoader_onset_raw, self).__init__(dataset, batch_size, shuffle)
+
+        # if sample_size <= receptive_fields:
+        #     raise Exception("sample_size has to be bigger than receptive_fields")
+        if sample_rate % chart_sample_rate:
+            raise Exception("sample_rate は 100の倍数にしてほしい")
+
+        tmp = sample_size % (sample_rate / chart_sample_rate)
+        if tmp != 0:
+            self.sample_size = int(sample_size + (sample_rate / chart_sample_rate) - tmp)
+            print("{}({}):sample_sizeがちょっとキリ悪いので増やしました。{}->{}".format(self.__class__.__name__,
+                                                                                        ('valid' if valid else 'train'),
+                                                                                        sample_size,
+                                                                                        self.sample_size))
+        else:
+            self.sample_size = sample_size
+        self.sample_rate = sample_rate
+        self.chart_sample_rate = chart_sample_rate
+
+        self.receptive_fields = receptive_fields
+        self.diffs = ['Beginner', 'Easy', 'Medium', 'Hard', 'Challenge']
+
+        self.collate_fn = self._collate_fn
+
+    def calc_sample_size(self, audio):
+        if len(audio[0]) >= self.sample_size + self.receptive_fields:
+            audio_sample_size = self.sample_size
+            chart_sample_size = audio_sample_size / (self.sample_rate / self.chart_sample_rate)
+        else:
+            audio_sample_size = len(audio[0])
+            chart_sample_size = (audio_sample_size - self.receptive_fields) / (self.sample_rate / self.chart_sample_rate)
+            chart_sample_size = 0 if chart_sample_size < 0 else chart_sample_size
+        assert chart_sample_size == int(chart_sample_size)
+        return audio_sample_size, int(chart_sample_size)
+
+    @staticmethod
+    def _variable(data):
+        tensor = torch.from_numpy(data).float()
+
+        if torch.cuda.is_available():
+            return torch.autograd.Variable(tensor.cuda())
+        else:
+            return torch.autograd.Variable(tensor)
+
+    def _collate_fn(self, files):
+        song_feat_batch = []
+        target_batch_iter = []
+        diff_batch_iter = []
+
+        # batch_size:1 in wavenet so dont need list struct
+        file = files[0]
+        file_chart, encoded_audio = file
+        _, _, charts = file_chart
+
+        # song_feat
+        padding = charts[0].nframes*(self.sample_rate/self.chart_sample_rate) - encoded_audio.shape[0]
+        assert padding >= 0
+        encoded_audio = np.pad(encoded_audio, [[self.receptive_fields,int(padding)],[0,0]], 'constant')
+        song_feat_batch.append(encoded_audio)
+
+        # chart
+        for chart in random.sample(charts, len(charts)):
+            target = [int(frame_idx in chart.onsets) for frame_idx in range(chart.nframes)]
+            target_batch = np.array([target])
+            target_batch_iter.append(target_batch)
+            diff_batch = np.zeros((1,5))
+            diff_batch[0][self.diffs.index(chart.get_coarse_difficulty())] = 1.0
+            diff_batch_iter.append(diff_batch)
+
+        song_feat_batch = np.array(song_feat_batch)
+        # raw_audioモデルではsample_sizeを制限すると曲を刻んでyieldする
+        # さらに、曲ごとではtarget_batch_iterというリストの中に一曲のchartをすべて入れてyieldを回す。
+        for target_batch, diff_batch in zip(target_batch_iter, diff_batch_iter):
+            song_feat_batch_copy = song_feat_batch.copy()
+            if self.sample_size:
+                # サンプルサイズが設定されている場合はその長さに音源を切って順にトレーニングに投げる
+                audio_sample_size, chart_sample_size = self.calc_sample_size(song_feat_batch_copy)
+                print(audio_sample_size, chart_sample_size)
+
+                while audio_sample_size > self.receptive_fields:
+                    inputs = song_feat_batch_copy[:, :audio_sample_size+self.receptive_fields, :]
+                    targets = target_batch[:, :chart_sample_size]
+
+                    yield (self._variable(inputs), self._variable(diff_batch)), self._variable(targets)
+
+                    song_feat_batch_copy = song_feat_batch_copy[:, audio_sample_size:, :]
+                    target_batch = target_batch[:, chart_sample_size:]
+                    audio_sample_size, chart_sample_size = self.calc_sample_size(song_feat_batch_copy)
+            else:
+                # サンプルサイズが設定されていない場合はそのまま投げる(メモリ溢れても知らないよ)
+                return (self._variable(song_feat_batch_copy), self._variable(diff_batch)), self._variable(target_batch)
 # }}}
