@@ -176,10 +176,9 @@ class DataLoader(data.DataLoader):
     """
 
 class Dataset_onset(data.Dataset):
-    def __init__(self, data_dir, selected_channel=0, in_channels=80, trim=False): #no trim for match timestep
+    def __init__(self, data_dir, trim=False): #no trim for match timestep
         super(Dataset_onset, self).__init__()
 
-        self.in_channels = in_channels
         self.trim = trim
 
         self.root_path = data_dir
@@ -198,7 +197,7 @@ class Dataset_onset(data.Dataset):
 
 
 class DataLoader_onset(data.DataLoader):
-    def __init__(self, data_dir, receptive_fields, ddc_channel_select, in_channels=80,
+    def __init__(self, data_dir, receptive_fields, ddc_channel_select,
                  batch_size=1, shuffle=True, valid=False):
         """
         DataLoader for WaveNet
@@ -209,12 +208,11 @@ class DataLoader_onset(data.DataLoader):
                             |------- samples -------------------|
                             |---------------------|-- outputs --|
         :param ddc_channel_select: select channel of ddc input melspectrogram.
-        :param in_channels: number of input channels
         :param batch_size:
         :param shuffle:
         """
         # add validation feature. if valid=True, this is dataloader for validation
-        dataset = Dataset_onset(data_dir, in_channels)
+        dataset = Dataset_onset(data_dir)
         dataset_size = len(dataset)
         train_size = int(dataset_size*0.9)
         if valid==False:
@@ -247,38 +245,33 @@ class DataLoader_onset(data.DataLoader):
             return torch.autograd.Variable(tensor)
 
     def _collate_fn(self, files):
-        song_feat_batch = []
-        target_batch_iter = []
-        diff_batch_iter = []
-        for file in files:
-            # batch_size:1だからこのfor文は一回しか回らない。
-            song_meta, song_feat, charts = file
-            # song_feat
-            song_feat = song_feat[:, :, self.ddc_channel_select] # slice selected channel
-            song_feat = song_feat.reshape(-1, song_feat.shape[1]*song_feat.shape[2]) # [time, freq*channel]
-            song_feat_batch.append(song_feat)
-            # chart
-            for chart in random.sample(charts, len(charts)):
-                target = [int(frame_idx in chart.onsets) for frame_idx in range(chart.nframes)]
-                target_batch = np.array([target])
-                target_batch_iter.append(target_batch)
-                diff_batch = np.zeros((1,5))
-                diff_batch[0][self.diffs.index(chart.get_coarse_difficulty())] = 1.0
-                diff_batch_iter.append(diff_batch)
-                # iter [target] in one music.
-                # iter [onehot] in one music.
+        file_chart = files[0]
+        _, song_feat, charts = file_chart
 
-        # from IPython import embed
-        # embed()
-        # exit()
-
-        song_feat_batch = np.array(song_feat_batch)
+        # song_feat
+        song_feat = song_feat[:, :, self.ddc_channel_select] # slice selected channel
+        song_feat = song_feat.reshape(-1, song_feat.shape[1]*song_feat.shape[2]) # [time, freq*channel]
+        song_feat_batch = np.array([song_feat]) # batch_size:1
         song_feat_batch = np.pad(song_feat_batch, [[0, 0], [self.receptive_fields, 0], [0, 0]], 'constant')
 
-        # raw_audioモデルでは、sample_sizeを制限すると曲を刻んでyieldするので、それに合わせてyieldになっている。
-        # target_batch_iterというリストの中に一曲のchartをすべて入れてイテレーションをするので、結果的にyieldを利用する
+        # chart
+        target_batch_iter = []
+        diff_batch_iter = []
+        for chart in random.sample(charts, len(charts)):
+            target = [int(frame_idx in chart.onsets) for frame_idx in range(chart.nframes)]
+            target_batch = np.array([target])
+            target_batch_iter.append(target_batch)
+            diff_batch = np.zeros((1,5))
+            diff_batch[0][self.diffs.index(chart.get_coarse_difficulty())] = 1.0
+            diff_batch_iter.append(diff_batch)
+
+        # target_batch_iterというリストの中に一曲のchartをすべて入れてイテレーションをするので、yieldを利用する
+        # unrollingと名付けたリスト(len=1)でバッチを投げているのは、切り抜いてサンプルサイズ毎に学習する場合に合わせているから
         for target_batch, diff_batch in zip(target_batch_iter, diff_batch_iter):
-            yield (self._variable(song_feat_batch), self._variable(diff_batch)), self._variable(target_batch)
+            song_feat_batch_unrolling = [self._variable(song_feat_batch)]
+            target_batch_unrolling = [self._variable(target_batch)]
+            diff_batch_unrolling = [self._variable(diff_batch)]
+            yield (song_feat_batch_unrolling, diff_batch_unrolling), target_batch_unrolling
 # }}}
 # Dataset class (ddc_onsetnet_with_raw_audio){{{
     """
@@ -394,11 +387,6 @@ class DataLoader_onset_raw(data.DataLoader):
             return torch.autograd.Variable(tensor)
 
     def _collate_fn(self, files):
-        song_feat_batch = []
-        target_batch_iter = []
-        diff_batch_iter = []
-
-        # batch_size:1 in wavenet so dont need list struct
         file = files[0]
         file_chart, encoded_audio = file
         _, _, charts = file_chart
@@ -406,10 +394,12 @@ class DataLoader_onset_raw(data.DataLoader):
         # song_feat
         padding = charts[0].nframes*(self.sample_rate/self.chart_sample_rate) - encoded_audio.shape[0]
         assert padding >= 0
-        encoded_audio = np.pad(encoded_audio, [[self.receptive_fields,int(padding)],[0,0]], 'constant')
-        song_feat_batch.append(encoded_audio)
+        song_feat_batch = np.array([encoded_audio]) # batch_size=1
+        song_feat_batch = np.pad(song_feat_batch, [[0,0],[self.receptive_fields,int(padding)],[0,0]], 'constant')
 
         # chart
+        target_batch_iter = []
+        diff_batch_iter = []
         for chart in random.sample(charts, len(charts)):
             target = [int(frame_idx in chart.onsets) for frame_idx in range(chart.nframes)]
             target_batch = np.array([target])
@@ -418,26 +408,34 @@ class DataLoader_onset_raw(data.DataLoader):
             diff_batch[0][self.diffs.index(chart.get_coarse_difficulty())] = 1.0
             diff_batch_iter.append(diff_batch)
 
-        song_feat_batch = np.array(song_feat_batch)
-        # raw_audioモデルではsample_sizeを制限すると曲を刻んでyieldする
-        # さらに、曲ごとではtarget_batch_iterというリストの中に一曲のchartをすべて入れてyieldを回す。
+        # target_batch_iterというリストの中に一曲のchartをすべて入れてイテレーションをするので、yieldを利用する
+        # raw_audioモデルではsample_sizeを制限すると曲を刻んでunrollingにする
         for target_batch, diff_batch in zip(target_batch_iter, diff_batch_iter):
-            song_feat_batch_copy = song_feat_batch.copy()
             if self.sample_size:
                 # サンプルサイズが設定されている場合はその長さに音源を切って順にトレーニングに投げる
+                song_feat_batch_copy = song_feat_batch.copy()
+                song_feat_batch_unrolling = []
+                target_batch_unrolling = []
+                diff_batch_unrolling = []
                 audio_sample_size, chart_sample_size = self.calc_sample_size(song_feat_batch_copy)
-                print(audio_sample_size, chart_sample_size)
 
                 while audio_sample_size > self.receptive_fields:
                     inputs = song_feat_batch_copy[:, :audio_sample_size+self.receptive_fields, :]
                     targets = target_batch[:, :chart_sample_size]
-
-                    yield (self._variable(inputs), self._variable(diff_batch)), self._variable(targets)
+                    song_feat_batch_unrolling.append(self._variable(inputs))
+                    target_batch_unrolling.append(self._variable(targets))
+                    diff_batch_unrolling.append(self._variable(diff_batch))
 
                     song_feat_batch_copy = song_feat_batch_copy[:, audio_sample_size:, :]
                     target_batch = target_batch[:, chart_sample_size:]
                     audio_sample_size, chart_sample_size = self.calc_sample_size(song_feat_batch_copy)
+
+                yield (song_feat_batch_unrolling, diff_batch_unrolling), target_batch_unrolling
+
             else:
                 # サンプルサイズが設定されていない場合はそのまま投げる(メモリ溢れても知らないよ)
-                return (self._variable(song_feat_batch_copy), self._variable(diff_batch)), self._variable(target_batch)
+                song_feat_batch_unrolling = [self._variable(song_feat_batch)]
+                target_batch_unrolling = [self._variable(target_batch)]
+                diff_batch_unrolling = [self._variable(diff_batch)]
+                yield (song_feat_batch_unrolling, diff_batch_unrolling), target_batch_unrolling
 # }}}

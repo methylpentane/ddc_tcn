@@ -5,6 +5,7 @@ Main model of WaveNet
 Calculate loss and optimizing
 """
 import os
+from functools import reduce
 
 import torch
 import torch.optim
@@ -53,52 +54,65 @@ class WaveNet:
         if torch.cuda.is_available():
             self.net.cuda()
 
-    def train(self, inputs, targets, gc_inputs=None):
+    def train(self, inputs_unrolling, targets_unrolling, gc_inputs_unrolling=None):
         """
         Train 1 time
-        :param inputs: Tensor[batch, timestep, channels]
-        :param targets: Torch tensor [batch, timestep, channels]
-        :param gc_inputs: Tensor[batch, channels]
+        [changed for unrolling process.]
+        :param inputs: list of (Tensor[batch, timestep, channels])
+        :param targets: list of (tensor [batch, timestep, channels])
+        :param gc_inputs: list of (Tensor[batch, channels])
         :return: float loss
         """
         if not self.net.training:
             self.net.train()
 
-        if gc_inputs is not None:
-            assert gc_inputs.shape[1] == self.gc_channels
+        if gc_inputs_unrolling is not None:
+            assert gc_inputs_unrolling[0].shape[1] == self.gc_channels
         else:
             assert self.gc_channels == 0
 
-        outputs = self.net(inputs, gc_inputs)
+        losses = []
+        for inputs, gc_inputs, targets in zip(inputs_unrolling, gc_inputs_unrolling, targets_unrolling):
+            outputs = self.net(inputs, gc_inputs)
+            if self.out_channels == 1:
+                # BCEw/logit need [N, *] therefore [N, T*C]. C=1 therefore [N, T]. target is same
+                loss = self.loss(outputs.view(1,-1), targets)
+            else:
+                # CELoss need [N, Class], therefore [N*T, C], N=1 therefore [T, C].
+                # for target, [N] is needed, therefore [N*T], N=1 therefore [T]. (target tensor is not onehot vector)
+                loss = self.loss(outputs.view(-1,self.in_channels).long(), targets.view(-1))
+            losses.append(loss.item())
 
-        if self.out_channels == 1:
-            loss = self.loss(outputs.view(1,-1), targets)
-        else:
-            loss = self.loss(outpus.view(-1,self.in_channels).long(), targets.view(1,-1))
+            self.optimizer.zero_grad()
+            loss.backward()
+            self.optimizer.step()
 
-        self.optimizer.zero_grad()
-        loss.backward()
-        self.optimizer.step()
+        loss_avg = sum(losses)/len(losses)
+        return loss_avg
 
-        return loss.item()
-
-    def generate(self, inputs, gc_inputs=None):
+    def generate(self, inputs_unrolling, gc_inputs_unrolling=None):
         """
         Generate 1 time
-        :param inputs: Tensor[batch, timestep, channels]
-        :param gc_inputs: Tensor[batch, channels]
-        :return: Tensor[batch, timestep, channels]
+        [changed for unrolling process.]
+        :param inputs: list of (Tensor[batch, timestep, channels])
+        :param targets: list of (tensor [batch, timestep, channels])
+        :param gc_inputs: list of (Tensor[batch, channels])
         """
         if self.net.training:
             self.net.eval()
 
-        if gc_inputs is not None:
-            assert gc_inputs.shape[1] == self.gc_channels
+        if gc_inputs_unrolling is not None:
+            assert gc_inputs_unrolling[0].shape[1] == self.gc_channels
         else:
             assert self.gc_channels == 0
 
         with torch.no_grad():
-            outputs = self.net(inputs, gc_inputs)
+            outputs_list = []
+            for inputs, gc_inputs in zip(inputs_unrolling, gc_inputs_unrolling):
+                outputs = self.net(inputs, gc_inputs)
+                outputs_list.append(outputs)
+
+            outputs = reduce(lambda x,y:torch.cat([x,y], dim=1), outputs_list)
 
         return outputs
 
@@ -140,19 +154,17 @@ class WaveNet_onset(WaveNet):
     def __init__(self, layer_size, stack_size, in_channels, res_channels, out_channels, gc_channels, input_scale, lr=0.002):
         super(WaveNet_onset, self).__init__(layer_size, stack_size, in_channels, res_channels, out_channels, gc_channels, input_scale, lr)
 
-    def validation(self, inputs, targets, gc_inputs=None):
+    def validation(self, inputs_unrolling, targets_unrolling, gc_inputs_unrolling=None):
         """
         validation 1 time
-        :param inputs: Tensor[batch=1, timestep, channels=1]
-        :param targets: tensor [batch=1, timestep]
-        :param gc_inputs: Tensor[batch, channels]
+        [changed for unrolling process.]
+        :param inputs: list of Tensor[batch=1, timestep, channels=1]
+        :param targets: list of tensor [batch=1, timestep]
+        :param gc_inputs: list of Tensor[batch, channels]
         :return: metrics for 1 generation
         """
-        if gc_inputs is not None:
-            assert gc_inputs.shape[1] == self.gc_channels
-        else:
-            assert self.gc_channels == 0
-        result = self.generate(inputs, gc_inputs)
+        result = self.generate(inputs_unrolling, gc_inputs_unrolling)
+        targets = reduce(lambda x,y:torch.cat([x,y], dim=1), targets_unrolling)
 
         # preprocess
         result = np.squeeze(result.to('cpu').detach().numpy().copy())

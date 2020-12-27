@@ -11,27 +11,34 @@ import numpy as np
 
 import wavenet.config as config
 from wavenet.model import WaveNet_onset
-from wavenet.utils.data import DataLoader_onset_raw
+from wavenet.utils.data import DataLoader_onset, DataLoader_onset_raw
 
 
 class Trainer:
     def __init__(self, args):
         self.args = args
 
-        self.wavenet = WaveNet_onset(args.layer_size, args.stack_size,
-                               args.in_channels, args.res_channels, args.out_channels,
-                               args.gc_channels, args.input_scale, lr=args.lr)
+        # initiation
+        if args.mode == 'onset_spectre':
+            self.wavenet = WaveNet_onset(args.layer_size, args.stack_size, args.in_channels, args.res_channels, args.out_channels, args.gc_channels, args.input_scale, lr=args.lr)
+            self.data_loader = DataLoader_onset(args.data_dir, self.wavenet.receptive_fields, args.ddc_channel_select)
+            self.data_loader_valid = DataLoader_onset(args.data_dir, self.wavenet.receptive_fields, args.ddc_channel_select, valid=True, shuffle=False)
 
-        self.data_loader = DataLoader_onset_raw(args.data_dir, self.wavenet.receptive_fields, args.sample_size)
-        self.data_loader_valid = DataLoader_onset_raw(args.data_dir, self.wavenet.receptive_fields, args.sample_size, valid=True, shuffle=False)
+        if args.mode == 'onset_raw':
+            self.wavenet = WaveNet_onset(args.layer_size, args.stack_size, args.in_channels, args.res_channels, args.out_channels, args.gc_channels, args.input_scale, lr=args.lr)
+            self.data_loader = DataLoader_onset_raw(args.data_dir, self.wavenet.receptive_fields, args.sample_size)
+            self.data_loader_valid = DataLoader_onset_raw(args.data_dir, self.wavenet.receptive_fields, args.sample_size, valid=True, shuffle=False)
+
         self.summary_writer = None if args.nolog else SummaryWriter(log_dir=args.log_dir)
         # log hparams
         text = '''\
+        #### mode: {mode}
         #### comment: {comment}
         |layer|stack|in|residual|out|global condition|lr|STFT_window_selection|
         |----|----|----|----|----|----|----|----|
         |{layer}|{stack}|{in_}|{res}|{out}|{gc}|{lr}|{stft}|\
         '''.format(
+            mode=args.mode,
             comment=' '.join(args.comment),
             layer=str(args.layer_size),
             stack=str(args.stack_size),
@@ -44,21 +51,21 @@ class Trainer:
         if self.summary_writer is not None:
             self.summary_writer.add_text('condition', dedent(text))
 
-    def infinite_batch(self): # deprecated by akiba. changed to whileTrue{one_epoch}
-        while True:
-            for dataset in self.data_loader:
-                for inputs, targets in dataset:
-                    yield inputs, targets
+    # def infinite_batch(self): # deprecated by akiba. changed to whileTrue{one_epoch}
+    #     while True:
+    #         for dataset in self.data_loader:
+    #             for inputs, targets in dataset:
+    #                 yield inputs, targets
 
     def one_epoch_batch(self):
         for dataset in self.data_loader:
-            for inputs, targets in dataset:
-                yield inputs, targets
+            for inputs_unrolling, targets_unrolling in dataset:
+                yield inputs_unrolling, targets_unrolling
 
     def one_epoch_batch_valid(self):
         for dataset in self.data_loader_valid:
-            for inputs, targets in dataset:
-                yield inputs, targets
+            for inputs_unrolling, targets_unrolling in dataset:
+                yield inputs_unrolling, targets_unrolling
 
     def log(self, tag, y, x):
         if self.summary_writer is not None:
@@ -70,13 +77,13 @@ class Trainer:
         while True:
             # training for one epoch
             print('training for one epoch')
-            for inputs, targets in self.one_epoch_batch():
+            for inputs_unrolling, targets_unrolling in self.one_epoch_batch():
                 if self.args.gc_channels:
-                    inputs, gc_inputs = inputs
+                    inputs_unrolling, gc_inputs_unrolling = inputs_unrolling
                 else:
-                    gc_inputs = None
+                    gc_inputs_unrolling = None
 
-                loss = self.wavenet.train(inputs, targets, gc_inputs)
+                loss = self.wavenet.train(inputs_unrolling, targets_unrolling, gc_inputs_unrolling)
 
                 total_steps += 1
 
@@ -86,12 +93,12 @@ class Trainer:
             # do validation
             print('validating...', end='')
             epoch_metrics = defaultdict(list)
-            for inputs, targets in self.one_epoch_batch_valid():
+            for inputs_unrolling, targets_unrolling in self.one_epoch_batch_valid():
                 if self.args.gc_channels:
-                    inputs, gc_inputs = inputs
+                    inputs_unrolling, gc_inputs_unrolling = inputs_unrolling
                 else:
-                    gc_inputs = None
-                metrics = self.wavenet.validation(inputs, targets, gc_inputs)
+                    gc_inputs_unrolling = None
+                metrics = self.wavenet.validation(inputs_unrolling, targets_unrolling, gc_inputs_unrolling)
                 for metrics_key, metrics_value in metrics.items():
                     epoch_metrics[metrics_key].append(metrics_value)
 
