@@ -1,6 +1,6 @@
 import numpy as np
 
-from wavenet.utils.chart import SymbolicChart, OnsetChart
+from wavenet.utils.chart import SymbolicChart, OnsetChart, OneshotChart
 from functools import reduce
 
 def create_onset_charts(meta, song_features, frame_rate):
@@ -31,6 +31,19 @@ def create_symbolic_charts(meta, song_features, frame_rate, sym_k):
 
     return charts
 
+def create_oneshot_charts(meta, song_features, frame_rate, sym_k):
+    charts = []
+    for raw_chart in meta['charts']:
+        chart_metadata = (raw_chart['difficulty_coarse'], raw_chart['difficulty_fine'], raw_chart['type'], raw_chart['desc_or_author'])
+        try:
+            oneshot_chart = OneshotChart(song_metadata, song_features, frame_rate, chart_metadata, raw_chart['notes'], sym_k)
+        except ValueError as e:
+            print('Error from {}: {}'.format(meta['title'].encode('ascii', 'ignore'), e))
+            continue
+        charts.append(oneshot_chart)
+
+    return charts
+
 if __name__ == '__main__':
     import argparse
     import pickle
@@ -42,7 +55,7 @@ if __name__ == '__main__':
 
     parser.add_argument('dataset_fps', type=str, nargs='+', help='')
     parser.add_argument('--out_dir', type=str, required=True, help='')
-    parser.add_argument('--chart_type', type=str, choices=['onset', 'sym'], help='')
+    parser.add_argument('--chart_type', type=str, choices=['onset', 'sym', 'oneshot'], help='')
     parser.add_argument('--frame_rate', type=str, help='')
     parser.add_argument('--feats_dir', type=str, help='')
     parser.add_argument('--sym_k', type=int, help='')
@@ -91,6 +104,9 @@ if __name__ == '__main__':
                     song_data = (song_metadata, song_feats, song_charts)
                 elif args.chart_type == 'sym':
                     song_charts = create_symbolic_charts(meta, song_feats, frame_rate, args.sym_k)
+                    song_data = (song_metadata, song_feats, song_charts)
+                elif args.chart_type == 'oneshot':
+                    song_charts = create_oneshot_charts(meta, song_feats, frame_rate, args.sym_k)
                     song_data = (song_metadata, song_feats, song_charts)
                 else:
                     raise NotImplementedError

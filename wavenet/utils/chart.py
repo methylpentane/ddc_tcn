@@ -1,3 +1,5 @@
+# delete this line if you want disable fold option in vim.
+# vim:set foldmethod=marker:
 """Class managing a Stepmania "chart"
 
 'Stepfiles' for Stepmania are organized into 'charts': lists of annotations for by an annotator for a song with some difficulty. Many charts can point to one song so we do not want to store song features for every chart. Instead, we have this helper class that will point to song features but store chart features. This way, our training and eval sets can be list of charts, instead of some mess with list of songs attached to multiple charts.
@@ -13,6 +15,7 @@ from functools import reduce
 from wavenet.utils.beatcalc import BeatCalc
 from wavenet.utils.util import make_onset_feature_context, np_pad
 
+# class Chart {{{
 class Chart(object):
     def __init__(self, song_metadata, metadata, annotations):
         assert len(annotations) >= 2
@@ -55,7 +58,9 @@ class Chart(object):
 
     def get_annotations_per_second(self):
         return self.annotations_per_second
+# }}}
 
+# class OnsetChart {{{
 class OnsetChart(Chart):
     def __init__(self, song_metadata, song_features, frame_rate, metadata, annotations):
         super(OnsetChart, self).__init__(song_metadata, metadata, annotations)
@@ -68,7 +73,7 @@ class OnsetChart(Chart):
         self.onsets = set(filter(lambda x: x >= 0, self.onsets))
         self.onsets = set(filter(lambda x: x < self.nframes, self.onsets))
         # TODO: filter greater than song_features len?
-        # 結果格納されるのは「オンセットであるフレーム番号(タイムスタンプでない)の集合」っぽい
+        # 結果格納されるのは「オンセットであるフレーム番号の集合」っぽい
 
         self.first_onset = min(self.onsets)
         self.last_onset = max(self.onsets)
@@ -219,7 +224,9 @@ class OnsetChart(Chart):
         zhmax = zack_hack_div_2 + subseq_len
 
         return np.array(seq_feats_audio, dtype=dtype), np.array(seq_feats_other, dtype=dtype)[zhmin:zhmax], np.array(seq_y, dtype=dtype)[zhmin:zhmax]
+# }}}
 
+# class SymbolicChart {{{
 class SymbolicChart(Chart):
     def __init__(self, song_metadata, song_features, frame_rate, metadata, annotations, pre=1, post=False):
         super(SymbolicChart, self).__init__(song_metadata, metadata, annotations)
@@ -437,3 +444,15 @@ class SymbolicChart(Chart):
 
     def get_sequence(self, **feat_kwargs):
         return self.get_subsequence(0, self.get_nannotations(), **feat_kwargs)
+# }}}
+
+# class OneshotChart {{{
+class OneshotChart(OnsetChart):
+    def __init__(self, song_metadata, song_features, frame_rate, metadata, annotations, sym_k):
+        super(OneshotChart, self).__init__(song_metadata, song_features, frame_rate, metadata, annotations)
+
+        self.sequence = []
+        for annotation in annotations:
+            _, _, _, label = annotation
+            self.sequence.append(label)
+# }}}
