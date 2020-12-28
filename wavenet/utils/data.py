@@ -5,7 +5,7 @@ Show raw audio and mu-law encode samples to make input source
 """
 import os,sys
 
-import librosa
+import librosa, warnings
 import numpy as np
 
 import torch
@@ -16,7 +16,9 @@ import random
 
 # general audio methods {{{
 def load_audio(filename, sample_rate=16000, trim=True, trim_frame_length=2048):
-    audio, _ = librosa.load(filename, sr=sample_rate, mono=True)
+    with warnings.catch_warnings():
+        warnings.simplefilter('ignore')
+        audio, _ = librosa.load(filename, sr=sample_rate, mono=True)
     audio = audio.reshape(-1, 1)
 
     if trim:
@@ -257,13 +259,18 @@ class DataLoader_onset(data.DataLoader):
         # chart
         target_batch_iter = []
         diff_batch_iter = []
+        # データ水増しのために、譜面の左右反転などが行われているが、これはonsetデータとしては意味をなさないので、各難易度について一回しか学習を投げない
+        diff_seen_flag = {key:False for key in self.diffs}
         for chart in random.sample(charts, len(charts)):
-            target = [int(frame_idx in chart.onsets) for frame_idx in range(chart.nframes)]
-            target_batch = np.array([target])
-            target_batch_iter.append(target_batch)
-            diff_batch = np.zeros((1,5))
-            diff_batch[0][self.diffs.index(chart.get_coarse_difficulty())] = 1.0
-            diff_batch_iter.append(diff_batch)
+            diff = chart.get_coarse_difficulty()
+            if diff_seen_flag[diff] == False:
+                diff_seen_flag[diff] = True
+                target = [int(frame_idx in chart.onsets) for frame_idx in range(chart.nframes)]
+                target_batch = np.array([target])
+                target_batch_iter.append(target_batch)
+                diff_batch = np.zeros((1,5))
+                diff_batch[0][self.diffs.index(diff)] = 1.0
+                diff_batch_iter.append(diff_batch)
 
         # target_batch_iterというリストの中に一曲のchartをすべて入れてイテレーションをするので、yieldを利用する
         # unrollingと名付けたリスト(len=1)でバッチを投げているのは、切り抜いてサンプルサイズ毎に学習する場合に合わせているから
@@ -400,13 +407,18 @@ class DataLoader_onset_raw(data.DataLoader):
         # chart
         target_batch_iter = []
         diff_batch_iter = []
+        # データ水増しのために、譜面の左右反転などが行われているが、これはonsetデータとしては意味をなさないので、各難易度について一回しか学習を投げない
+        diff_seen_flag = {key:False for key in self.diffs}
         for chart in random.sample(charts, len(charts)):
-            target = [int(frame_idx in chart.onsets) for frame_idx in range(chart.nframes)]
-            target_batch = np.array([target])
-            target_batch_iter.append(target_batch)
-            diff_batch = np.zeros((1,5))
-            diff_batch[0][self.diffs.index(chart.get_coarse_difficulty())] = 1.0
-            diff_batch_iter.append(diff_batch)
+            diff = chart.get_coarse_difficulty()
+            if diff_seen_flag[diff] == False:
+                diff_seen_flag[diff] = True
+                target = [int(frame_idx in chart.onsets) for frame_idx in range(chart.nframes)]
+                target_batch = np.array([target])
+                target_batch_iter.append(target_batch)
+                diff_batch = np.zeros((1,5))
+                diff_batch[0][self.diffs.index(diff)] = 1.0
+                diff_batch_iter.append(diff_batch)
 
         # target_batch_iterというリストの中に一曲のchartをすべて入れてイテレーションをするので、yieldを利用する
         # raw_audioモデルではsample_sizeを制限すると曲を刻んでunrollingにする
