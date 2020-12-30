@@ -122,7 +122,7 @@ class Trainer:
 
 def prepare_output_dir(args):
     now = datetime.now()
-    log_dirname = datetime.strftime(now, '%m月%d日') + '/' + datetime.strftime(now, '%H:%M:%S')
+    log_dirname = datetime.strftime(now, '%mm%dd') + '/' + datetime.strftime(now, '%H:%M:%S')
     args.log_dir = os.path.join(args.output_dir, log_dirname)
     args.model_dir = os.path.join(args.output_dir, 'model')
     args.test_output_dir = os.path.join(args.output_dir, 'test')
