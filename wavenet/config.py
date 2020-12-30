@@ -5,7 +5,7 @@ import argparse
 
 parser = argparse.ArgumentParser()
 
-parser.add_argument('--mode', type=str, choices=['onset_spectre', 'onset_raw'], help='form of training dataset')
+parser.add_argument('--mode', type=str, choices=['onset_spectre', 'onset_raw', 'oneshot_spectre'], help='form of training dataset')
 
 parser.add_argument('--layer_size', type=int, default=10,
                     help='layer_size: 10 = layer[dilation=1, dilation=2, 4, 8, 16, 32, 64, 128, 256, 512]')

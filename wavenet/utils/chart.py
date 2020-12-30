@@ -448,7 +448,7 @@ class SymbolicChart(Chart):
 
 # class OneshotChart {{{
 class OneshotChart(OnsetChart):
-    def __init__(self, song_metadata, song_features, frame_rate, metadata, annotations, sym_k):
+    def __init__(self, song_metadata, song_features, frame_rate, metadata, annotations):
         super(OneshotChart, self).__init__(song_metadata, song_features, frame_rate, metadata, annotations)
 
         self.sequence = []

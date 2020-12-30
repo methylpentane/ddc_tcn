@@ -31,12 +31,12 @@ def create_symbolic_charts(meta, song_features, frame_rate, sym_k):
 
     return charts
 
-def create_oneshot_charts(meta, song_features, frame_rate, sym_k):
+def create_oneshot_charts(meta, song_features, frame_rate):
     charts = []
     for raw_chart in meta['charts']:
         chart_metadata = (raw_chart['difficulty_coarse'], raw_chart['difficulty_fine'], raw_chart['type'], raw_chart['desc_or_author'])
         try:
-            oneshot_chart = OneshotChart(song_metadata, song_features, frame_rate, chart_metadata, raw_chart['notes'], sym_k)
+            oneshot_chart = OneshotChart(song_metadata, song_features, frame_rate, chart_metadata, raw_chart['notes'])
         except ValueError as e:
             print('Error from {}: {}'.format(meta['title'].encode('ascii', 'ignore'), e))
             continue
@@ -106,7 +106,7 @@ if __name__ == '__main__':
                     song_charts = create_symbolic_charts(meta, song_feats, frame_rate, args.sym_k)
                     song_data = (song_metadata, song_feats, song_charts)
                 elif args.chart_type == 'oneshot':
-                    song_charts = create_oneshot_charts(meta, song_feats, frame_rate, args.sym_k)
+                    song_charts = create_oneshot_charts(meta, song_feats, frame_rate)
                     song_data = (song_metadata, song_feats, song_charts)
                 else:
                     raise NotImplementedError

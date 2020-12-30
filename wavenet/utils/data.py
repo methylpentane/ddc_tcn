@@ -165,7 +165,7 @@ class DataLoader(data.DataLoader):
             return self._variable(audio),\
                    self._variable(one_hot_decode(targets, 2))
 # }}}
-# Dataset class (ddc_onsetnet) {{{
+# Dataset class (onset_spectre) {{{
     """
     input: spectrum (one channel from original data)
     output: onset prediction(0~1, 1channel)
@@ -234,9 +234,6 @@ class DataLoader_onset(data.DataLoader):
 
         self.collate_fn = self._collate_fn
 
-    def calc_sample_size(self, audio):
-        len(audio[0])
-
     @staticmethod
     def _variable(data):
         tensor = torch.from_numpy(data).float()
@@ -280,7 +277,7 @@ class DataLoader_onset(data.DataLoader):
             diff_batch_unrolling = [self._variable(diff_batch)]
             yield (song_feat_batch_unrolling, diff_batch_unrolling), target_batch_unrolling
 # }}}
-# Dataset class (ddc_onsetnet_with_raw_audio){{{
+# Dataset class (onset_raw){{{
     """
     input: raw_audio (one channel from original data)
     output: onset prediction(0~1, 1channel)
@@ -450,4 +447,121 @@ class DataLoader_onset_raw(data.DataLoader):
                 target_batch_unrolling = [self._variable(target_batch)]
                 diff_batch_unrolling = [self._variable(diff_batch)]
                 yield (song_feat_batch_unrolling, diff_batch_unrolling), target_batch_unrolling
+# }}}
+# Dataset class (oneshot_spectre){{{
+    """
+    input: spectrum (one channel from original data)
+    output: onset prediction(0~1, 1channel)
+
+    data_dir -> ddc's chart_onset/mel80hop441
+    chartファイル生成後に入ってるtrain.txtとかは消しておく
+    曲の長さがだいたい同じだけどまちまちだから、
+        * バッチサイズ１(一曲ずつ読み込む)
+        * サンプルサイズ＝一曲まるまる
+    """
+
+class Dataset_oneshot(data.Dataset):
+    def __init__(self, data_dir, trim=False): #no trim for match timestep
+        super(Dataset_oneshot, self).__init__()
+
+        self.trim = trim
+
+        self.root_path = data_dir
+        self.filenames = [x for x in sorted(os.listdir(self.root_path)) if x.split('.')[-1] == 'pkl']
+
+    def __getitem__(self, index):
+        filepath = os.path.join(self.root_path, self.filenames[index])
+
+        with open(filepath, 'rb') as f:
+            file = pickle.load(f)
+
+        return file
+
+    def __len__(self):
+        return len(self.filenames)
+
+
+class DataLoader_oneshot(data.DataLoader):
+    def __init__(self, data_dir, receptive_fields, ddc_channel_select,
+                 batch_size=1, shuffle=True, valid=False):
+        """
+        DataLoader for WaveNet
+        :param data_dir:
+        :param receptive_fields: integer. size(length) of receptive fields
+                            sample size has to be bigger than receptive fields.
+                            |-- receptive field --|---------------------|
+                            |------- samples -------------------|
+                            |---------------------|-- outputs --|
+        :param ddc_channel_select: select channel of ddc input melspectrogram.
+        :param batch_size:
+        :param shuffle:
+        """
+        # add validation feature. if valid=True, this is dataloader for validation
+        dataset = Dataset_oneshot(data_dir)
+        dataset_size = len(dataset)
+        train_size = int(dataset_size*0.9)
+        if valid==False:
+            dataset = data.dataset.Subset(dataset, list(range(train_size)))
+        else:
+            dataset = data.dataset.Subset(dataset, list(range(train_size, dataset_size)))
+
+        super(DataLoader_oneshot, self).__init__(dataset, batch_size, shuffle)
+
+        # if sample_size <= receptive_fields:
+        #     raise Exception("sample_size has to be bigger than receptive_fields")
+
+        # self.sample_size = sample_size
+        self.receptive_fields = receptive_fields
+        self.ddc_channel_select = ddc_channel_select
+        self.diffs = ['Beginner', 'Easy', 'Medium', 'Hard', 'Challenge']
+
+        self.collate_fn = self._collate_fn
+
+    @staticmethod
+    def _variable(data):
+        tensor = torch.from_numpy(data).float()
+
+        if torch.cuda.is_available():
+            return torch.autograd.Variable(tensor.cuda())
+        else:
+            return torch.autograd.Variable(tensor)
+
+    @staticmethod
+    def _symbol_onehot_encode(sequence)
+        symbol_onehot = np.zeros((len(sequence), 256))
+        symbol_onehot[np.arange(len(sequence)), [int(symbol, base=4) for symbol in sequence]] = 1
+        return symbol_onehot
+
+    def _collate_fn(self, files):
+        file_chart = files[0]
+        _, song_feat, charts = file_chart
+
+        # song_feat
+        song_feat = song_feat[:, :, self.ddc_channel_select] # slice selected channel
+        song_feat = song_feat.reshape(-1, song_feat.shape[1]*song_feat.shape[2]) # [time, freq*channel]
+        song_feat_batch = np.array([song_feat]) # batch_size:1
+        song_feat_batch = np.pad(song_feat_batch, [[0, 0], [self.receptive_fields, 0], [0, 0]], 'constant')
+
+        # chart
+        target_batch_iter = []
+        diff_batch_iter = []
+        for chart in random.sample(charts, len(charts)):
+            target_onsets = [int(frame_idx in chart.onsets) for frame_idx in range(chart.nframes)]
+            target_symbol = self._symbol_onehot_encode(chart.sequence)
+            target_batch = np.zeros((target_onsets.shape[0], 256))
+            target_batch[sorted(list(chart.onsets))] = target_symbol
+            target_batch = np.concatenate([target_onsets, target_batch], axis=1)[np.newaxis]
+            target_batch_iter.append(target_batch)
+            diff = chart.get_coarse_difficulty()
+            diff_batch = np.zeros((1,5))
+            diff_batch[0][self.diffs.index(diff)] = 1.0
+            diff_batch_iter.append(diff_batch)
+
+        # target_batch_iterというリストの中に一曲のchartをすべて入れてイテレーションをするので、yieldを利用する
+        # unrollingと名付けたリスト(len=1)でバッチを投げているのは、切り抜いてサンプルサイズ毎に学習する場合に合わせているから
+        for target_batch, diff_batch in zip(target_batch_iter, diff_batch_iter):
+            song_feat_batch_unrolling = [self._variable(song_feat_batch)]
+            target_batch_unrolling = [self._variable(target_batch)]
+            diff_batch_unrolling = [self._variable(diff_batch)]
+            yield (song_feat_batch_unrolling, diff_batch_unrolling), target_batch_unrolling
 # }}}
