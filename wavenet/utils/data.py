@@ -527,7 +527,7 @@ class DataLoader_oneshot(data.DataLoader):
             return torch.autograd.Variable(tensor)
 
     @staticmethod
-    def _symbol_onehot_encode(sequence)
+    def _symbol_onehot_encode(sequence):
         symbol_onehot = np.zeros((len(sequence), 256))
         symbol_onehot[np.arange(len(sequence)), [int(symbol, base=4) for symbol in sequence]] = 1
         return symbol_onehot
