@@ -546,7 +546,8 @@ class DataLoader_oneshot(data.DataLoader):
         target_batch_iter = []
         diff_batch_iter = []
         for chart in random.sample(charts, len(charts)):
-            target_onsets = [int(frame_idx in chart.onsets) for frame_idx in range(chart.nframes)]
+            target_onsets = [[int(frame_idx in chart.onsets)] for frame_idx in range(chart.nframes)]
+            target_onsets = np.array(target_onsets)
             target_symbol = self._symbol_onehot_encode(chart.sequence)
             target_batch = np.zeros((target_onsets.shape[0], 256))
             target_batch[sorted(list(chart.onsets))] = target_symbol
