@@ -10,7 +10,7 @@ from textwrap import dedent
 import numpy as np
 
 import wavenet.config as config
-from wavenet.model import WaveNet_onset
+from wavenet.model import WaveNet_onset, WaveNet_oneshot
 from wavenet.utils.data import DataLoader_onset, DataLoader_onset_raw, DataLoader_oneshot
 
 
@@ -30,7 +30,7 @@ class Trainer:
             self.data_loader_valid = DataLoader_onset_raw(args.data_dir, self.wavenet.receptive_fields, args.sample_size, valid=True, shuffle=False)
 
         if args.mode == 'oneshot_spectre':
-            self.wavenet = WaveNet_onset(args.layer_size, args.stack_size, args.in_channels, args.res_channels, args.out_channels, args.gc_channels, args.input_scale, lr=args.lr)
+            self.wavenet = WaveNet_oneshot(args.layer_size, args.stack_size, args.in_channels, args.res_channels, args.out_channels, args.gc_channels, args.input_scale, lr=args.lr)
             self.data_loader = DataLoader_oneshot(args.data_dir, self.wavenet.receptive_fields, args.ddc_channel_select)
             self.data_loader_valid = DataLoader_oneshot(args.data_dir, self.wavenet.receptive_fields, args.ddc_channel_select, valid=True, shuffle=False)
 

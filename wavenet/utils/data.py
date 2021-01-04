@@ -527,10 +527,10 @@ class DataLoader_oneshot(data.DataLoader):
             return torch.autograd.Variable(tensor)
 
     @staticmethod
-    def _symbol_onehot_encode(sequence):
-        symbol_onehot = np.zeros((len(sequence), 256))
-        symbol_onehot[np.arange(len(sequence)), [int(symbol, base=4) for symbol in sequence]] = 1
-        return symbol_onehot
+    def _symbol_encode(sequence):
+        # res.shape: [len(chart.onsets), 1]
+        res = np.array([[int(symbol, base=4)] for symbol in sequence])
+        return res
 
     def _collate_fn(self, files):
         file_chart = files[0]
@@ -548,8 +548,8 @@ class DataLoader_oneshot(data.DataLoader):
         for chart in random.sample(charts, len(charts)):
             target_onsets = [[int(frame_idx in chart.onsets)] for frame_idx in range(chart.nframes)]
             target_onsets = np.array(target_onsets)
-            target_symbol = self._symbol_onehot_encode(chart.sequence)
-            target_batch = np.zeros((target_onsets.shape[0], 256))
+            target_symbol = self._symbol_encode(chart.sequence)
+            target_batch = np.zeros((target_onsets.shape[0],1))
             target_batch[sorted(list(chart.onsets))] = target_symbol
             target_batch = np.concatenate([target_onsets, target_batch], axis=1)[np.newaxis]
             target_batch_iter.append(target_batch)
