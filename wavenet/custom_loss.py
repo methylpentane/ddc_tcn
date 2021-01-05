@@ -1,4 +1,5 @@
 from torch import nn
+import warnings
 
 class LossForOneshot(nn.Module):
     def __init__(self, out_channels):
@@ -17,7 +18,9 @@ class LossForOneshot(nn.Module):
         onset_targets = targets[:,:,0:1] #[1,time,1]
         symbol_targets = targets[:,:,1:] #[1,time,1]
 
-        onset_index_list = onset_targets.nonzero()[:,1]
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore')
+            onset_index_list = onset_targets.nonzero()[:,1]
 
         symbol_targets = symbol_targets[:, onset_index_list, :]
         symbol_outputs = symbol_outputs[:, onset_index_list, :]

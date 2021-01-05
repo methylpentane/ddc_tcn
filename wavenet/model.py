@@ -277,6 +277,8 @@ class WaveNet_oneshot(WaveNet):
         """
         result = self.generate(inputs_unrolling, gc_inputs_unrolling)
         targets = reduce(lambda x,y:torch.cat([x,y], dim=1), targets_unrolling)
+        result = result[:,:,0]
+        targets = targets[:,:,0]
 
         # preprocess
         result = np.squeeze(result.to('cpu').detach().numpy().copy())
