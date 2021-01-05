@@ -81,7 +81,7 @@ class WaveNet:
             else:
                 # CELoss need [N, Class], therefore [N*T, C], N=1 therefore [T, C].
                 # for target, [N] is needed, therefore [N*T], N=1 therefore [T]. (target tensor is not onehot vector)
-                loss = self.loss(outputs.view(-1,self.in_channels).long(), targets.view(-1))
+                loss = self.loss(outputs.view(-1,self.in_channels), targets.view(-1).long())
             losses.append(loss.item())
 
             self.optimizer.zero_grad()
@@ -222,6 +222,7 @@ class WaveNet_onset(WaveNet):
         return metrics
 
 # }}}
+# ddc wavenet oneshot{{{
 """
 oneshotもいろいろ違うので別クラス
 """
