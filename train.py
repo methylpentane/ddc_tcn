@@ -1,3 +1,4 @@
+# vim:set foldmethod=marker:
 """
 A script for WaveNet training
 """
@@ -11,14 +12,14 @@ import numpy as np
 
 import wavenet.config as config
 from wavenet.model import WaveNet_onset, WaveNet_oneshot
-from wavenet.utils.data import DataLoader_onset, DataLoader_onset_raw, DataLoader_oneshot, DataLoader_oneshot_raw, DataLoader_oneshot_raw_snap
+from wavenet.utils.data import DataLoader_onset, DataLoader_onset_raw, DataLoader_oneshot, DataLoader_oneshot_snap, DataLoader_oneshot_raw, DataLoader_oneshot_raw_snap
 
 
 class Trainer:
     def __init__(self, args):
         self.args = args
 
-        # initiation
+        # initiation {{{
         if args.mode == 'onset_spectre':
             self.wavenet = WaveNet_onset(args.layer_size, args.stack_size, args.in_channels, args.res_channels, args.out_channels, args.gc_channels, args.input_scale, lr=args.lr)
             self.data_loader = DataLoader_onset(args.data_dir, self.wavenet.receptive_fields, args.ddc_channel_select)
@@ -34,6 +35,11 @@ class Trainer:
             self.data_loader = DataLoader_oneshot(args.data_dir, self.wavenet.receptive_fields, args.ddc_channel_select)
             self.data_loader_valid = DataLoader_oneshot(args.data_dir, self.wavenet.receptive_fields, args.ddc_channel_select, valid=True, shuffle=False)
 
+        if args.mode == 'oneshot_spectre_snap':
+            self.wavenet = WaveNet_oneshot(args.layer_size, args.stack_size, args.in_channels, args.res_channels, args.out_channels, args.gc_channels, args.input_scale, lr=args.lr)
+            self.data_loader = DataLoader_oneshot_snap(args.data_dir, self.wavenet.receptive_fields, args.ddc_channel_select, args.sample_size)
+            self.data_loader_valid = DataLoader_oneshot_snap(args.data_dir, self.wavenet.receptive_fields, args.ddc_channel_select, args.sample_size, valid=True, shuffle=False)
+
         if args.mode == 'oneshot_raw':
             self.wavenet = WaveNet_oneshot(args.layer_size, args.stack_size, args.in_channels, args.res_channels, args.out_channels, args.gc_channels, args.input_scale, lr=args.lr)
             self.data_loader = DataLoader_oneshot_raw(args.data_dir, self.wavenet.receptive_fields, args.sample_size)
@@ -43,6 +49,7 @@ class Trainer:
             self.wavenet = WaveNet_oneshot(args.layer_size, args.stack_size, args.in_channels, args.res_channels, args.out_channels, args.gc_channels, args.input_scale, lr=args.lr)
             self.data_loader = DataLoader_oneshot_raw_snap(args.data_dir, self.wavenet.receptive_fields, args.sample_size)
             self.data_loader_valid = DataLoader_oneshot_raw_snap(args.data_dir, self.wavenet.receptive_fields, args.sample_size, valid=True, shuffle=False)
+        # }}}
 
         self.summary_writer = None if args.nolog else SummaryWriter(log_dir=args.log_dir)
         # log hparams

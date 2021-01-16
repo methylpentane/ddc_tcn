@@ -472,7 +472,7 @@ class Dataset_oneshot(data.Dataset):
         self.filenames = [x for x in sorted(os.listdir(self.root_path)) if x.split('.')[-1] == 'pkl']
 
         # "Blue" causes error (number of onsets and symbols doesnt match)
-        self.filenames_chart.remove('Fraxtil_sBeastBeats_Blue.pkl')
+        self.filenames.remove('Fraxtil_sBeastBeats_Blue.pkl')
 
     def __getitem__(self, index):
         filepath = os.path.join(self.root_path, self.filenames[index])
@@ -913,6 +913,151 @@ class DataLoader_oneshot_raw_snap(data.DataLoader):
 
             else:
                 # サンプルサイズが設定されていない場合はそのまま投げる(メモリ溢れても知らないよ)
+                song_feat_batch_unrolling = [self._variable(song_feat_batch)]
+                target_batch_unrolling = [self._variable(target_batch)]
+                diff_batch_unrolling = [self._variable(diff_batch)]
+                yield (song_feat_batch_unrolling, diff_batch_unrolling), target_batch_unrolling
+# }}}
+# Dataset class (oneshot_spectre_snap){{{
+    """
+    input: spectrum (one channel from original data)
+    output: onset prediction(0~1, 1channel)
+
+    data_dir -> ddc's chart_onset/mel80hop441
+    chartファイル生成後に入ってるtrain.txtとかは消しておく
+    曲の長さがだいたい同じだけどまちまちだから、
+        * バッチサイズ１(一曲ずつ読み込む)
+    """
+
+class DataLoader_oneshot_snap(data.DataLoader):
+    def __init__(self, data_dir, receptive_fields, ddc_channel_select,
+                 sample_size=0,
+                 batch_size=1, shuffle=True, valid=False):
+        """
+        DataLoader for WaveNet
+        :param data_dir:
+        :param receptive_fields: integer. size(length) of receptive fields
+                            sample size has to be bigger than receptive fields.
+                            |-- receptive field --|---------------------|
+                            |------- samples -------------------|
+                            |---------------------|-- outputs --|
+        :param ddc_channel_select: select channel of ddc input melspectrogram.
+        :param batch_size:
+        :param shuffle:
+        """
+        # add validation feature. if valid=True, this is dataloader for validation
+        dataset = Dataset_oneshot(data_dir)
+        dataset_size = len(dataset)
+        train_size = int(dataset_size*0.9)
+        if valid==False:
+            dataset = data.dataset.Subset(dataset, list(range(train_size)))
+        else:
+            dataset = data.dataset.Subset(dataset, list(range(train_size, dataset_size)))
+
+        super(DataLoader_oneshot_snap, self).__init__(dataset, batch_size, shuffle)
+
+        # if sample_size <= receptive_fields:
+        #     raise Exception("sample_size has to be bigger than receptive_fields")
+
+        self.sample_size = sample_size
+        self.receptive_fields = receptive_fields
+        self.ddc_channel_select = ddc_channel_select
+        self.diffs = ['Beginner', 'Easy', 'Medium', 'Hard', 'Challenge']
+
+        self.collate_fn = self._collate_fn
+        self.valid = valid
+
+    def calc_sample_size(self, audio):
+        if len(audio[0]) >= self.sample_size + self.receptive_fields:
+            tmp_sample_size = self.sample_size
+        else:
+            tmp_sample_size = len(audio[0]) # この時len(audio[0])がゼロならば終了
+        return tmp_sample_size
+
+    @staticmethod
+    def _variable(data):
+        tensor = torch.from_numpy(data).float()
+
+        if torch.cuda.is_available():
+            return torch.autograd.Variable(tensor.cuda())
+        else:
+            return torch.autograd.Variable(tensor)
+
+    @staticmethod
+    def _symbol_encode(sequence):
+        # res.shape: [len(chart.onsets), 1]
+        res = np.array([[int(symbol, base=4)] for symbol in sequence])
+        return res
+
+    def _collate_fn(self, files):
+        file_chart = files[0]
+        _, song_feat, charts = file_chart
+
+        # song_feat
+        song_feat = song_feat[:, :, self.ddc_channel_select] # slice selected channel
+        song_feat = song_feat.reshape(-1, song_feat.shape[1]*song_feat.shape[2]) # [time, freq*channel]
+        song_feat_batch = np.array([song_feat]) # batch_size:1
+        song_feat_batch = np.pad(song_feat_batch, [[0, 0], [self.receptive_fields, 0], [0, 0]], 'constant')
+
+        # chart
+        target_batch_iter = []
+        diff_batch_iter = []
+        for chart in random.sample(charts, len(charts)):
+            target_onsets = [[int(frame_idx in chart.onsets)] for frame_idx in range(chart.nframes)]
+            target_onsets = np.array(target_onsets)
+            target_symbol = self._symbol_encode(chart.sequence)
+            target_batch = np.zeros((target_onsets.shape[0],1))
+            target_batch[sorted(list(chart.onsets))] = target_symbol
+            target_batch = np.concatenate([target_onsets, target_batch], axis=1)[np.newaxis]
+            target_batch_iter.append(target_batch)
+            diff = chart.get_coarse_difficulty()
+            diff_batch = np.zeros((1,5))
+            diff_batch[0][self.diffs.index(diff)] = 1.0
+            diff_batch_iter.append(diff_batch)
+
+        # target_batch_iterというリストの中に一曲のchartをすべて入れてイテレーションをするので、yieldを利用する
+        for target_batch, diff_batch in zip(target_batch_iter, diff_batch_iter):
+            if self.sample_size != 0:
+                song_feat_batch_copy = song_feat_batch.copy()
+                song_feat_batch_unrolling = []
+                target_batch_unrolling = []
+                diff_batch_unrolling = []
+                # make train unrollings
+                if not self.valid:
+                    # random sample by constant sample size
+                    num_unrolling = int(song_feat_batch.shape[1]/self.sample_size)
+                    for nu in range(num_unrolling):
+                        former = []
+                        while True:
+                            target_index_start = random.randint(0, target_batch.shape[1]-self.sample_size)
+                            if target_index_start not in former:
+                                former.append(target_index_start)
+                                break
+                        targets = target_batch[:, target_index_start:target_index_start+self.sample_size, :]
+                        audio_index_start = target_index_start
+                        inputs = song_feat_batch_copy[:, audio_index_start:audio_index_start+self.sample_size+self.receptive_fields, :]
+                        song_feat_batch_unrolling.append(self._variable(inputs))
+                        target_batch_unrolling.append(self._variable(targets))
+                        diff_batch_unrolling.append(self._variable(diff_batch))
+                    yield (song_feat_batch_unrolling, diff_batch_unrolling), target_batch_unrolling
+                # make valid unrollings
+                else:
+                    tmp_sample_size = self.sample_size
+                    while tmp_sample_size > self.receptive_fields:
+                        inputs = song_feat_batch_copy[:, :tmp_sample_size+self.receptive_fields, :]
+                        targets = target_batch[:, :tmp_sample_size]
+                        song_feat_batch_unrolling.append(self._variable(inputs))
+                        target_batch_unrolling.append(self._variable(targets))
+                        diff_batch_unrolling.append(self._variable(diff_batch))
+
+                        song_feat_batch_copy = song_feat_batch_copy[:, tmp_sample_size:, :]
+                        target_batch = target_batch[:, tmp_sample_size:]
+                        tmp_sample_size = self.calc_sample_size(song_feat_batch_copy)
+
+                    yield (song_feat_batch_unrolling, diff_batch_unrolling), target_batch_unrolling
+
+            # input whole data
+            else:
                 song_feat_batch_unrolling = [self._variable(song_feat_batch)]
                 target_batch_unrolling = [self._variable(target_batch)]
                 diff_batch_unrolling = [self._variable(diff_batch)]
