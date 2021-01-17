@@ -473,6 +473,8 @@ class Dataset_oneshot(data.Dataset):
 
         # "Blue" causes error (number of onsets and symbols doesnt match)
         self.filenames.remove('Fraxtil_sBeastBeats_Blue.pkl')
+        # "Gangnam Style(kidz bop) is bad for training (Easy chart is not easy. it's some sort of prank.)"
+        self.filenames.remove('Fraxtil_sArrowArrangements_GangnamStyle.pkl')
 
     def __getitem__(self, index):
         filepath = os.path.join(self.root_path, self.filenames[index])
@@ -598,6 +600,9 @@ class Dataset_oneshot_raw(data.Dataset):
         # "Blue" causes error (number of onsets and symbols doesnt match)
         self.filenames_chart.remove('Fraxtil_sBeastBeats_Blue.pkl')
         self.filenames_audio.remove('Fraxtil_sBeastBeats_Blue.ogg')
+        # "Gangnam Style(kidz bop) is bad for training (Easy chart is not easy. it's some sort of prank.)"
+        self.filenames.remove('Fraxtil_sArrowArrangements_GangnamStyle.pkl')
+        self.filenames.remove('Fraxtil_sArrowArrangements_GangnamStyle.ogg')
 
     def __getitem__(self, index):
         filepath_chart = os.path.join(self.root_path, self.filenames_chart[index])
