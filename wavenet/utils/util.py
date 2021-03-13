@@ -163,4 +163,27 @@ def align_onsets_to_sklearn(true_onsets, pred_onsets, scores, tolerance=0):
     first_onset = min(true_onsets)
     last_onset = max(true_onsets)
 
-    return y_true[first_onset:last_onset + 1], y_scores[first_onset:last_onset + 1]
+    y_scores[:first_onset] = 0
+    y_scores[last_onset:] = 0
+    return y_true, y_scores
+
+def mean_average_precision(y_true, y_pred):
+    average_precisions = []
+    # calculate per-class AP
+    for i in range(len(y_true)):
+        sort_idx = np.argsort(y_pred[i])[::-1]
+        y_true_sorted = y_true[i][sort_idx]
+
+        cumsum = np.cumsum(y_true_sorted)
+        recall = cumsum / np.max(cumsum)
+        precision = cumsum / np.arange(1, 1 + y_true[i].shape[0])
+
+        # 代表点
+        points_x = np.arange(11) / 10
+        points_y = np.zeros(points_x.shape[0])
+        for i in range(points_x.shape[0]-1, -1, -1):
+            points_y[i] = np.max(precision[recall >= points_x[i]])
+
+        average_precision = np.mean(points_y)
+        average_precisions.append(average_precision)
+    return sum(average_precisions)/len(average_precisions)

@@ -95,6 +95,7 @@ class Trainer:
 
     def run(self):
         total_steps = 0
+        do_mAP = True if 'oneshot' in self.args.mode else False
 
         while True:
             # training for one epoch
@@ -114,21 +115,35 @@ class Trainer:
 
             # do validation
             print('validating...', end='')
+            if do_mAP:
+                targets_label_onehot_all = np.zeros((0,args.out_channels-1), dtype=np.int)
+                y_pred_label_all = np.zeros((0,args.out_channels-1), dtype=np.float32)
             epoch_metrics = defaultdict(list)
+            # count = 0
             for inputs_unrolling, targets_unrolling in self.one_epoch_batch_valid():
                 if self.args.gc_channels:
                     inputs_unrolling, gc_inputs_unrolling = inputs_unrolling
                 else:
                     gc_inputs_unrolling = None
                 metrics = self.wavenet.validation(inputs_unrolling, targets_unrolling, gc_inputs_unrolling)
+                if do_mAP:
+                    targets_label_onehot_all = np.vstack((targets_label_onehot_all, metrics['targets_label_onehot']))
+                    y_pred_label_all = np.vstack((y_pred_label_all, metrics['y_pred_label']))
+                    del metrics['targets_label_onehot'], metrics['y_pred_label']
                 for metrics_key, metrics_value in metrics.items():
                     epoch_metrics[metrics_key].append(metrics_value)
+                # print(count)
+                # count += 1
+
+            if do_mAP:
+                macro_mAP = self.wavenet.macro_mAP(targets_label_onehot_all, y_pred_label_all)
 
             epoch_metrics = {k: (np.mean(v), np.var(v)) for k, v in epoch_metrics.items()}
 
             for key, value in epoch_metrics.items():
                 self.log('valid/'+key+'_mean', value[0], total_steps)
                 self.log('valid/'+key+'_variance', value[1], total_steps)
+                self.log('valid/'+'macro_mAP', macro_mAP, total_steps)
             print('done')
 
             if total_steps > self.args.num_steps:

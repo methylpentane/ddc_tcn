@@ -1031,6 +1031,7 @@ class DataLoader_oneshot_snap(data.DataLoader):
                 if not self.valid:
                     # random sample by constant sample size
                     num_unrolling = int(song_feat_batch.shape[1]/self.sample_size)
+                    assert num_unrolling > 0
                     for nu in range(num_unrolling):
                         former = []
                         while True:

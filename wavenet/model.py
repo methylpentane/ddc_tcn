@@ -12,7 +12,7 @@ import torch.optim
 import numpy as np
 
 from wavenet.networks import WaveNetModule
-from wavenet.utils.util import find_pred_onsets, align_onsets_to_sklearn
+from wavenet.utils.util import find_pred_onsets, align_onsets_to_sklearn, mean_average_precision
 from wavenet.custom_loss import LossForOneshot
 from sklearn.metrics import roc_curve, precision_recall_curve, auc, accuracy_score
 
@@ -275,21 +275,35 @@ class WaveNet_oneshot(WaveNet):
         :param gc_inputs: list of Tensor[batch, channels]
         :return: metrics for 1 generation
         """
+        #---------------
+        #---generation
         result = self.generate(inputs_unrolling, gc_inputs_unrolling)
         targets = reduce(lambda x,y:torch.cat([x,y], dim=1), targets_unrolling)
-        result = result[:,:,0]
-        targets = targets[:,:,0]
+        result_onset = result[:,:,0]
+        result_label = result[:,:,1:]
+        targets_onset = targets[:,:,0]
+        targets_label = targets[:,:,1:]
+        # labelについて、「矢印が無い(False)」が0になっているので、
+        # AP計算の際に実質考慮するラベルナンバーが1から始まるところがややこしい実装になっている。
 
-        # preprocess
-        result = np.squeeze(result.to('cpu').detach().numpy().copy())
-        targets = np.squeeze(targets.to('cpu').detach().numpy().copy())
-        assert result.shape == targets.shape
+        #---------------
+        #---preprocess
+        result_onset = np.squeeze(result_onset.to('cpu').detach().numpy().copy())
+        targets_onset = np.squeeze(targets_onset.to('cpu').detach().numpy().copy())
+        result_label = np.squeeze(result_label.to('cpu').detach().numpy().copy())
+        targets_label = np.squeeze(targets_label.to('cpu').detach().numpy().copy())
+        targets_label_onehot = np.zeros((len(targets_label), self.out_channels-1), dtype=np.int)
+        targets_label_onehot[np.arange(len(targets_label)), targets_label.astype(int)] = 1
+        assert result_onset.shape == targets_onset.shape
+        assert result_label.shape == targets_label_onehot.shape
 
         window = np.hamming(5)
-        predicted_onsets = find_pred_onsets(result, window)
-        true_onsets = set(np.where(targets == 1)[0].tolist())
-        y_true, y_scores_pkalgn = align_onsets_to_sklearn(true_onsets, predicted_onsets, result, tolerance=2)
+        predicted_onsets = find_pred_onsets(result_onset, window)
+        true_onsets = set(np.where(targets_onset == 1)[0].tolist())
+        y_true, y_scores_pkalgn = align_onsets_to_sklearn(true_onsets, predicted_onsets, result_onset, tolerance=2)
 
+        #---------------
+        #---step placement validation
         # eval_metrics_for_scores(ddc onset_train.py)
         nonsets = np.sum(y_true)
         # calculate ROC curve
@@ -317,6 +331,20 @@ class WaveNet_oneshot(WaveNet):
         y_labels[predicted_steps] = 1
         accuracy = accuracy_score(y_true.astype(np.int), y_labels)
 
+        #---------------
+        # scored one-hot result_label
+        y_pred_label = np.zeros_like(result_label, dtype=np.float32)
+        result_label_args = np.argmax(result_label, axis=1)
+        y_pred_label[np.arange(0,len(result_label_args)), result_label_args] = y_scores_pkalgn
+        # TrueNegative isnt necessary for AP
+        ans_neg_idx_set = set(np.where(y_true==0)[0])
+        pred_neg_idx_set = set(np.where(y_scores_pkalgn==0)[0])
+        trueneg_idx_set = ans_neg_idx_set & pred_neg_idx_set
+        not_trueneg_idx_set = set(list(range(len(y_true)))) - trueneg_idx_set
+        not_trueneg_idx_list = sorted(list(not_trueneg_idx_set))
+        targets_label_onehot = targets_label_onehot[not_trueneg_idx_list, :]
+        y_pred_label = y_pred_label[not_trueneg_idx_list, :]
+
         # aggregate metrics
         metrics = {}
         metrics['auroc'] = auroc
@@ -327,11 +355,16 @@ class WaveNet_oneshot(WaveNet):
         metrics['threshold'] = threshold_ideal
         metrics['accuracy'] = accuracy
         metrics['density_rel'] = density_rel
-
-        # from IPython import embed
-        # embed()
-        # exit()
+        # return prediction for macro mAP
+        metrics['targets_label_onehot'] = targets_label_onehot
+        metrics['y_pred_label'] = y_pred_label
 
         return metrics
+
+    def macro_mAP(self, y_true, y_pred):
+        gt_label_population = np.sum(y_true, axis=0)
+        y_true = y_true[:, gt_label_population.nonzero()[0]].T
+        y_pred = y_pred[:, gt_label_population.nonzero()[0]].T
+        return mean_average_precision(y_true, y_pred)
 
 # }}}
