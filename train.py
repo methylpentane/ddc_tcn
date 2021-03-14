@@ -95,7 +95,7 @@ class Trainer:
 
     def run(self):
         total_steps = 0
-        do_mAP = True if 'oneshot' in self.args.mode else False
+        do_calc_mAP_256 = True if args.calc_mAP_256 and 'oneshot' in self.args.mode else False
 
         while True:
             # training for one epoch
@@ -115,40 +115,43 @@ class Trainer:
 
             # do validation
             print('validating...', end='')
-            if do_mAP:
+            # prediction store initialize (if mAP)
+            if do_calc_mAP_256:
                 targets_label_onehot_all = np.zeros((0,args.out_channels-1), dtype=np.int)
                 y_pred_label_all = np.zeros((0,args.out_channels-1), dtype=np.float32)
+
+            # predict
             epoch_metrics = defaultdict(list)
-            # count = 0
             for inputs_unrolling, targets_unrolling in self.one_epoch_batch_valid():
                 if self.args.gc_channels:
                     inputs_unrolling, gc_inputs_unrolling = inputs_unrolling
                 else:
                     gc_inputs_unrolling = None
                 metrics = self.wavenet.validation(inputs_unrolling, targets_unrolling, gc_inputs_unrolling)
-                if do_mAP:
+                if do_calc_mAP_256:
                     targets_label_onehot_all = np.vstack((targets_label_onehot_all, metrics['targets_label_onehot']))
                     y_pred_label_all = np.vstack((y_pred_label_all, metrics['y_pred_label']))
-                    del metrics['targets_label_onehot'], metrics['y_pred_label']
+                del metrics['targets_label_onehot'], metrics['y_pred_label']
                 for metrics_key, metrics_value in metrics.items():
                     epoch_metrics[metrics_key].append(metrics_value)
-                # print(count)
-                # count += 1
 
-            if do_mAP:
+            # orgamize metrics
+            epoch_metrics = {k: (np.mean(v), np.var(v)) for k, v in epoch_metrics.items()}
+            if do_calc_mAP_256:
                 macro_mAP = self.wavenet.macro_mAP(targets_label_onehot_all, y_pred_label_all)
 
-            epoch_metrics = {k: (np.mean(v), np.var(v)) for k, v in epoch_metrics.items()}
-
+            # write metrics
             for key, value in epoch_metrics.items():
                 self.log('valid/'+key+'_mean', value[0], total_steps)
                 self.log('valid/'+key+'_variance', value[1], total_steps)
+            if do_calc_mAP_256:
                 self.log('valid/'+'macro_mAP', macro_mAP, total_steps)
             print('done')
 
             if total_steps > self.args.num_steps:
                 break
 
+        # now, model save is waste of storage
         # self.wavenet.save(args.model_dir)
 
 
