@@ -471,11 +471,6 @@ class Dataset_oneshot(data.Dataset):
         self.root_path = data_dir
         self.filenames = [x for x in sorted(os.listdir(self.root_path)) if x.split('.')[-1] == 'pkl']
 
-        # "Blue" causes error (number of onsets and symbols doesnt match)
-        self.filenames.remove('Fraxtil_sBeastBeats_Blue.pkl')
-        # "Gangnam Style(kidz bop) is bad for training (Easy chart is not easy. it's some sort of prank.)"
-        self.filenames.remove('Fraxtil_sArrowArrangements_GangnamStyle.pkl')
-
     def __getitem__(self, index):
         filepath = os.path.join(self.root_path, self.filenames[index])
 
@@ -596,13 +591,6 @@ class Dataset_oneshot_raw(data.Dataset):
         self.root_path = data_dir
         self.filenames_chart = [x for x in sorted(os.listdir(self.root_path)) if x.split('.')[-1] == 'pkl']
         self.filenames_audio = [x for x in sorted(os.listdir(self.root_path)) if x.split('.')[-1] == 'ogg']
-
-        # "Blue" causes error (number of onsets and symbols doesnt match)
-        self.filenames_chart.remove('Fraxtil_sBeastBeats_Blue.pkl')
-        self.filenames_audio.remove('Fraxtil_sBeastBeats_Blue.ogg')
-        # "Gangnam Style(kidz bop) is bad for training (Easy chart is not easy. it's some sort of prank.)"
-        self.filenames.remove('Fraxtil_sArrowArrangements_GangnamStyle.pkl')
-        self.filenames.remove('Fraxtil_sArrowArrangements_GangnamStyle.ogg')
 
     def __getitem__(self, index):
         filepath_chart = os.path.join(self.root_path, self.filenames_chart[index])

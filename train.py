@@ -55,12 +55,14 @@ class Trainer:
         # log hparams
         text = '''\
         #### mode: {mode}
+        #### dataset: {dataset}
         #### comment: {comment}
         |layer|stack|in|residual|out|global condition|lr|STFT_window_selection|
         |----|----|----|----|----|----|----|----|
         |{layer}|{stack}|{in_}|{res}|{out}|{gc}|{lr}|{stft}|\
         '''.format(
             mode=args.mode,
+            dataset=args.data_dir,
             comment=' '.join(args.comment),
             layer=str(args.layer_size),
             stack=str(args.stack_size),
