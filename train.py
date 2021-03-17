@@ -102,6 +102,7 @@ class Trainer:
         while True:
             # training for one epoch
             print('training for one epoch')
+            loss_sum = 0
             for inputs_unrolling, targets_unrolling in self.one_epoch_batch():
                 if self.args.gc_channels:
                     inputs_unrolling, gc_inputs_unrolling = inputs_unrolling
@@ -109,11 +110,11 @@ class Trainer:
                     gc_inputs_unrolling = None
 
                 loss = self.wavenet.train(inputs_unrolling, targets_unrolling, gc_inputs_unrolling)
-
+                loss_sum += loss
                 total_steps += 1
-
                 print('[{0}/{1}] loss: {2}'.format(total_steps, args.num_steps, loss))
-                self.log('train/mean_cross_entropy', loss, total_steps)
+
+            self.log('train/mean_cross_entropy', loss/len(self.data_loader.dataset), total_steps)
 
             # do validation
             print('validating...', end='')
