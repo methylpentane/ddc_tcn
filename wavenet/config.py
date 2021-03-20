@@ -26,7 +26,7 @@ parser.add_argument('--input_scale', type=int, default=1, help='integer ratio of
 # validation and logging
 parser.add_argument('--calc_mAP_256', action='store_true', default=False, help='(oneshot) if True, calc macro mAP of 256 class (caution: it may cause memory leaking)')
 parser.add_argument('--nolog', action='store_true', default=False, help='if True, tensorboard logging wont run')
-parser.add_argument('--comment', type=str, nargs='+', default=[''], help='comment you want to record to tensorboard')
+parser.add_argument('--comment', type=str, default='', help='comment you want to record to tensorboard')
 
 
 def parse_args(is_training=True):

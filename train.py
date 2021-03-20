@@ -63,7 +63,7 @@ class Trainer:
         '''.format(
             mode=args.mode,
             dataset=args.data_dir,
-            comment=' '.join(args.comment),
+            comment=args.comment,
             layer=str(args.layer_size),
             stack=str(args.stack_size),
             in_=str(args.in_channels),
