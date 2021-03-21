@@ -31,7 +31,7 @@ parser.add_argument('--comment', type=str, default='', help='comment you want to
 
 def parse_args(is_training=True):
     if is_training:
-        parser.add_argument('--data_dir', type=str, default='./test/data', help='Training data dir')
+        parser.add_argument('--data_dir', type=str, nargs='+', help='Training data dir')
         parser.add_argument('--output_dir', type=str, default='./output', help='Output dir for saving model and etc')
         parser.add_argument('--num_steps', type=int, default=100000, help='Total training steps')
         parser.add_argument('--lr', type=float, default=0.0001, help='learning rate decay')

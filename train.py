@@ -19,7 +19,7 @@ class Trainer:
     def __init__(self, args):
         self.args = args
 
-        # initiation {{{
+        # init of net & data{{{
         if args.mode == 'onset_spectre':
             self.wavenet = WaveNet_onset(args.layer_size, args.stack_size, args.in_channels, args.res_channels, args.out_channels, args.gc_channels, args.input_scale, lr=args.lr)
             self.data_loader = DataLoader_onset(args.data_dir, self.wavenet.receptive_fields, args.ddc_channel_select)
@@ -50,30 +50,34 @@ class Trainer:
             self.data_loader = DataLoader_oneshot_raw_snap(args.data_dir, self.wavenet.receptive_fields, args.sample_size)
             self.data_loader_valid = DataLoader_oneshot_raw_snap(args.data_dir, self.wavenet.receptive_fields, args.sample_size, valid=True, shuffle=False)
         # }}}
-
+        print('network & data loader OK')
+        # log init {{{
         self.summary_writer = None if args.nolog else SummaryWriter(log_dir=args.log_dir)
-        # log hparams
+        # hparams memo
         text = '''\
         #### mode: {mode}
         #### dataset: {dataset}
         #### comment: {comment}
-        |layer|stack|in|residual|out|global condition|lr|STFT_window_selection|
-        |----|----|----|----|----|----|----|----|
-        |{layer}|{stack}|{in_}|{res}|{out}|{gc}|{lr}|{stft}|\
+        |layer|stack|in|residual|out|global condition|lr|sample size|STFT window selection|
+        |----|----|----|----|----|----|----|----|----|
+        |{layer}|{stack}|{in_}|{res}|{out}|{gc}|{lr}|{sample_size}|{stft}|\
         '''.format(
             mode=args.mode,
-            dataset=args.data_dir,
+            dataset=', '.join(args.data_dir),
             comment=args.comment,
-            layer=str(args.layer_size),
-            stack=str(args.stack_size),
-            in_=str(args.in_channels),
-            res=str(args.res_channels),
-            out=str(args.out_channels),
-            gc=str(args.gc_channels),
-            lr=str(args.lr),
+            layer=args.layer_size,
+            stack=args.stack_size,
+            in_=args.in_channels,
+            res=args.res_channels,
+            out=args.out_channels,
+            gc=args.gc_channels,
+            lr=args.lr,
+            sample_size=args.sample_size,
             stft=','.join([str(_) for _ in args.ddc_channel_select]))
         if self.summary_writer is not None:
             self.summary_writer.add_text('condition', dedent(text))
+        # }}}
+        print('tensorboard log OK')
 
     # def infinite_batch(self): # deprecated by akiba. changed to whileTrue{one_epoch}
     #     while True:
@@ -101,7 +105,7 @@ class Trainer:
 
         while True:
             # training for one epoch
-            print('training for one epoch')
+            print('training for one epoch ...')
             loss_sum = 0
             for inputs_unrolling, targets_unrolling in self.one_epoch_batch():
                 if self.args.gc_channels:
@@ -134,7 +138,8 @@ class Trainer:
                 if do_calc_mAP_256:
                     targets_label_onehot_all = np.vstack((targets_label_onehot_all, metrics['targets_label_onehot']))
                     y_pred_label_all = np.vstack((y_pred_label_all, metrics['y_pred_label']))
-                del metrics['targets_label_onehot'], metrics['y_pred_label']
+                if 'oneshot' in self.args.mode:
+                    del metrics['targets_label_onehot'], metrics['y_pred_label']
                 for metrics_key, metrics_value in metrics.items():
                     epoch_metrics[metrics_key].append(metrics_value)
 

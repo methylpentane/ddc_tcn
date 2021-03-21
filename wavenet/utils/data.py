@@ -215,14 +215,17 @@ class DataLoader_onset(data.DataLoader):
         :param shuffle:
         """
         # add validation feature. if valid=True, this is dataloader for validation
-        dataset = Dataset_onset(data_dir)
-        dataset_size = len(dataset)
-        train_size = int(dataset_size*0.9)
-        if valid==False:
-            dataset = data.dataset.Subset(dataset, list(range(train_size)))
-        else:
-            dataset = data.dataset.Subset(dataset, list(range(train_size, dataset_size)))
-
+        datasets = []
+        for d_dir in data_dir:
+            dataset = Dataset_onset(d_dir)
+            dataset_size = len(dataset)
+            train_size = int(dataset_size*0.9)
+            if valid==False:
+                dataset = data.Subset(dataset, list(range(train_size)))
+            else:
+                dataset = data.Subset(dataset, list(range(train_size, dataset_size)))
+            datasets.append(dataset)
+        dataset = data.ConcatDataset(datasets)
         super(DataLoader_onset, self).__init__(dataset, batch_size, shuffle)
 
         # if sample_size <= receptive_fields:
@@ -339,14 +342,17 @@ class DataLoader_onset_raw(data.DataLoader):
         :param shuffle:
         """
         # add validation feature. if valid=True, this is dataloader for validation
-        dataset = Dataset_onset_raw(data_dir, sample_rate, in_channels)
-        dataset_size = len(dataset)
-        train_size = int(dataset_size*0.9)
-        if valid==False:
-            dataset = data.dataset.Subset(dataset, list(range(train_size)))
-        else:
-            dataset = data.dataset.Subset(dataset, list(range(train_size, dataset_size)))
-
+        datasets = []
+        for d_dir in data_dir:
+            dataset = Dataset_onset_raw(d_dir)
+            dataset_size = len(dataset)
+            train_size = int(dataset_size*0.9)
+            if valid==False:
+                dataset = data.Subset(dataset, list(range(train_size)))
+            else:
+                dataset = data.Subset(dataset, list(range(train_size, dataset_size)))
+            datasets.append(dataset)
+        dataset = data.ConcatDataset(datasets)
         super(DataLoader_onset_raw, self).__init__(dataset, batch_size, shuffle)
 
         # if sample_size <= receptive_fields:
@@ -499,14 +505,17 @@ class DataLoader_oneshot(data.DataLoader):
         :param shuffle:
         """
         # add validation feature. if valid=True, this is dataloader for validation
-        dataset = Dataset_oneshot(data_dir)
-        dataset_size = len(dataset)
-        train_size = int(dataset_size*0.9)
-        if valid==False:
-            dataset = data.dataset.Subset(dataset, list(range(train_size)))
-        else:
-            dataset = data.dataset.Subset(dataset, list(range(train_size, dataset_size)))
-
+        datasets = []
+        for d_dir in data_dir:
+            dataset = Dataset_oneshot(d_dir)
+            dataset_size = len(dataset)
+            train_size = int(dataset_size*0.9)
+            if valid==False:
+                dataset = data.Subset(dataset, list(range(train_size)))
+            else:
+                dataset = data.Subset(dataset, list(range(train_size, dataset_size)))
+            datasets.append(dataset)
+        dataset = data.ConcatDataset(datasets)
         super(DataLoader_oneshot, self).__init__(dataset, batch_size, shuffle)
 
         # if sample_size <= receptive_fields:
@@ -627,14 +636,17 @@ class DataLoader_oneshot_raw(data.DataLoader):
         :param shuffle:
         """
         # add validation feature. if valid=True, this is dataloader for validation
-        dataset = Dataset_oneshot_raw(data_dir)
-        dataset_size = len(dataset)
-        train_size = int(dataset_size*0.9)
-        if valid==False:
-            dataset = data.dataset.Subset(dataset, list(range(train_size)))
-        else:
-            dataset = data.dataset.Subset(dataset, list(range(train_size, dataset_size)))
-
+        datasets = []
+        for d_dir in data_dir:
+            dataset = Dataset_oneshot_raw(d_dir)
+            dataset_size = len(dataset)
+            train_size = int(dataset_size*0.9)
+            if valid==False:
+                dataset = data.Subset(dataset, list(range(train_size)))
+            else:
+                dataset = data.Subset(dataset, list(range(train_size, dataset_size)))
+            datasets.append(dataset)
+        dataset = data.ConcatDataset(datasets)
         super(DataLoader_oneshot_raw, self).__init__(dataset, batch_size, shuffle)
 
         # if sample_size <= receptive_fields:
@@ -744,7 +756,6 @@ class DataLoader_oneshot_raw(data.DataLoader):
                 diff_batch_unrolling = [self._variable(diff_batch)]
                 yield (song_feat_batch_unrolling, diff_batch_unrolling), target_batch_unrolling
 # }}}
-
 # Dataset class (oneshot_raw_snip){{{
     """
     input: raw_audio
@@ -774,14 +785,17 @@ class DataLoader_oneshot_raw_snap(data.DataLoader):
         :param shuffle:
         """
         # add validation feature. if valid=True, this is dataloader for validation
-        dataset = Dataset_oneshot_raw(data_dir)
-        dataset_size = len(dataset)
-        train_size = int(dataset_size*0.9)
-        if valid==False:
-            dataset = data.dataset.Subset(dataset, list(range(train_size)))
-        else:
-            dataset = data.dataset.Subset(dataset, list(range(train_size, dataset_size)))
-
+        datasets = []
+        for d_dir in data_dir:
+            dataset = Dataset_oneshot_raw(d_dir)
+            dataset_size = len(dataset)
+            train_size = int(dataset_size*0.9)
+            if valid==False:
+                dataset = data.Subset(dataset, list(range(train_size)))
+            else:
+                dataset = data.Subset(dataset, list(range(train_size, dataset_size)))
+            datasets.append(dataset)
+        dataset = data.ConcatDataset(datasets)
         super(DataLoader_oneshot_raw_snap, self).__init__(dataset, batch_size, shuffle)
 
         # if sample_size <= receptive_fields:
@@ -939,14 +953,17 @@ class DataLoader_oneshot_snap(data.DataLoader):
         :param shuffle:
         """
         # add validation feature. if valid=True, this is dataloader for validation
-        dataset = Dataset_oneshot(data_dir)
-        dataset_size = len(dataset)
-        train_size = int(dataset_size*0.9)
-        if valid==False:
-            dataset = data.dataset.Subset(dataset, list(range(train_size)))
-        else:
-            dataset = data.dataset.Subset(dataset, list(range(train_size, dataset_size)))
-
+        datasets = []
+        for d_dir in data_dir:
+            dataset = Dataset_oneshot(d_dir)
+            dataset_size = len(dataset)
+            train_size = int(dataset_size*0.9)
+            if valid==False:
+                dataset = data.Subset(dataset, list(range(train_size)))
+            else:
+                dataset = data.Subset(dataset, list(range(train_size, dataset_size)))
+            datasets.append(dataset)
+        dataset = data.ConcatDataset(datasets)
         super(DataLoader_oneshot_snap, self).__init__(dataset, batch_size, shuffle)
 
         # if sample_size <= receptive_fields:
