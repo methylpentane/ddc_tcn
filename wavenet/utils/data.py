@@ -14,6 +14,8 @@ import torch.utils.data as data
 import pickle
 import random
 
+from wavenet.utils.util import load_id_dict
+
 # general audio methods {{{
 def load_audio(filename, sample_rate=16000, trim=True, trim_frame_length=2048):
     with warnings.catch_warnings():
@@ -952,7 +954,7 @@ class DataLoader_oneshot_snap(data.DataLoader):
         :param batch_size:
         :param shuffle:
         """
-        # add validation feature. if valid=True, this is dataloader for validation
+        # dataset
         datasets = []
         for d_dir in data_dir:
             dataset = Dataset_oneshot(d_dir)
@@ -973,6 +975,9 @@ class DataLoader_oneshot_snap(data.DataLoader):
         self.receptive_fields = receptive_fields
         self.ddc_channel_select = ddc_channel_select
         self.diffs = ['Beginner', 'Easy', 'Medium', 'Hard', 'Challenge']
+        for d_dir in data_dir:
+            # self.author_dict = load_id_dict(pathlib.Path(d_dir)/'labels'/'freetext_to_id.csv')
+            self.author_dict = load_id_dict(os.path.join(d_dir,'labels','freetext_to_id.csv'))
 
         self.collate_fn = self._collate_fn
         self.valid = valid
@@ -1006,32 +1011,36 @@ class DataLoader_oneshot_snap(data.DataLoader):
         # song_feat
         song_feat = song_feat[:, :, self.ddc_channel_select] # slice selected channel
         song_feat = song_feat.reshape(-1, song_feat.shape[1]*song_feat.shape[2]) # [time, freq*channel]
-        song_feat_batch = np.array([song_feat]) # batch_size:1
+        song_feat_batch = np.array([song_feat], dtype=np.float32) # batch_size:1
         song_feat_batch = np.pad(song_feat_batch, [[0, 0], [self.receptive_fields, 0], [0, 0]], 'constant')
 
         # chart
         target_batch_iter = []
-        diff_batch_iter = []
+        gc_batch_iter = []
         for chart in random.sample(charts, len(charts)):
             target_onsets = [[int(frame_idx in chart.onsets)] for frame_idx in range(chart.nframes)]
-            target_onsets = np.array(target_onsets)
+            target_onsets = np.array(target_onsets, dtype=np.float32)
             target_symbol = self._symbol_encode(chart.sequence)
-            target_batch = np.zeros((target_onsets.shape[0],1))
+            target_batch = np.zeros((target_onsets.shape[0],1), dtype=np.float32)
             target_batch[sorted(list(chart.onsets))] = target_symbol
             target_batch = np.concatenate([target_onsets, target_batch], axis=1)[np.newaxis]
             target_batch_iter.append(target_batch)
             diff = chart.get_coarse_difficulty()
-            diff_batch = np.zeros((1,5))
+            diff_batch = np.zeros((1,5), dtype=np.float32)
             diff_batch[0][self.diffs.index(diff)] = 1.0
-            diff_batch_iter.append(diff_batch)
+            author = chart.get_freetext()
+            author_batch = np.zeros((1,12), dtype=np.float32)
+            author_batch[0][self.author_dict[author]] = 1.0
+            gc_batch = np.hstack((diff_batch, author_batch))
+            gc_batch_iter.append(gc_batch)
 
         # target_batch_iterというリストの中に一曲のchartをすべて入れてイテレーションをするので、yieldを利用する
-        for target_batch, diff_batch in zip(target_batch_iter, diff_batch_iter):
+        for target_batch, gc_batch in zip(target_batch_iter, gc_batch_iter):
             if self.sample_size != 0:
                 song_feat_batch_copy = song_feat_batch.copy()
                 song_feat_batch_unrolling = []
                 target_batch_unrolling = []
-                diff_batch_unrolling = []
+                gc_batch_unrolling = []
                 # make train unrollings
                 if not self.valid:
                     # random sample by constant sample size
@@ -1049,8 +1058,8 @@ class DataLoader_oneshot_snap(data.DataLoader):
                         inputs = song_feat_batch_copy[:, audio_index_start:audio_index_start+self.sample_size+self.receptive_fields, :]
                         song_feat_batch_unrolling.append(self._variable(inputs))
                         target_batch_unrolling.append(self._variable(targets))
-                        diff_batch_unrolling.append(self._variable(diff_batch))
-                    yield (song_feat_batch_unrolling, diff_batch_unrolling), target_batch_unrolling
+                        gc_batch_unrolling.append(self._variable(gc_batch))
+                    yield (song_feat_batch_unrolling, gc_batch_unrolling), target_batch_unrolling
                 # make valid unrollings
                 else:
                     tmp_sample_size = self.sample_size
@@ -1059,18 +1068,18 @@ class DataLoader_oneshot_snap(data.DataLoader):
                         targets = target_batch[:, :tmp_sample_size]
                         song_feat_batch_unrolling.append(self._variable(inputs))
                         target_batch_unrolling.append(self._variable(targets))
-                        diff_batch_unrolling.append(self._variable(diff_batch))
+                        gc_batch_unrolling.append(self._variable(gc_batch))
 
                         song_feat_batch_copy = song_feat_batch_copy[:, tmp_sample_size:, :]
                         target_batch = target_batch[:, tmp_sample_size:]
                         tmp_sample_size = self.calc_sample_size(song_feat_batch_copy)
 
-                    yield (song_feat_batch_unrolling, diff_batch_unrolling), target_batch_unrolling
+                    yield (song_feat_batch_unrolling, gc_batch_unrolling), target_batch_unrolling
 
             # input whole data
             else:
                 song_feat_batch_unrolling = [self._variable(song_feat_batch)]
                 target_batch_unrolling = [self._variable(target_batch)]
-                diff_batch_unrolling = [self._variable(diff_batch)]
-                yield (song_feat_batch_unrolling, diff_batch_unrolling), target_batch_unrolling
+                gc_batch_unrolling = [self._variable(gc_batch)]
+                yield (song_feat_batch_unrolling, gc_batch_unrolling), target_batch_unrolling
 # }}}

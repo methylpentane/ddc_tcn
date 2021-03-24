@@ -20,35 +20,45 @@ class Trainer:
         self.args = args
 
         # init of net & data{{{
-        if args.mode == 'onset_spectre':
-            self.wavenet = WaveNet_onset(args.layer_size, args.stack_size, args.in_channels, args.res_channels, args.out_channels, args.gc_channels, args.input_scale, lr=args.lr)
-            self.data_loader = DataLoader_onset(args.data_dir, self.wavenet.receptive_fields, args.ddc_channel_select)
-            self.data_loader_valid = DataLoader_onset(args.data_dir, self.wavenet.receptive_fields, args.ddc_channel_select, valid=True, shuffle=False)
 
-        if args.mode == 'onset_raw':
-            self.wavenet = WaveNet_onset(args.layer_size, args.stack_size, args.in_channels, args.res_channels, args.out_channels, args.gc_channels, args.input_scale, lr=args.lr)
-            self.data_loader = DataLoader_onset_raw(args.data_dir, self.wavenet.receptive_fields, args.sample_size)
-            self.data_loader_valid = DataLoader_onset_raw(args.data_dir, self.wavenet.receptive_fields, args.sample_size, valid=True, shuffle=False)
+        # global conditioning channels
+        for d in self.args.data_dir:
+            print(d)
+            if 'fraxtil' in d:
+                self.args.gc_channels += 1
+            elif 'itg' in d:
+                self.args.gc_channels += 12
 
-        if args.mode == 'oneshot_spectre':
-            self.wavenet = WaveNet_oneshot(args.layer_size, args.stack_size, args.in_channels, args.res_channels, args.out_channels, args.gc_channels, args.input_scale, lr=args.lr)
-            self.data_loader = DataLoader_oneshot(args.data_dir, self.wavenet.receptive_fields, args.ddc_channel_select)
-            self.data_loader_valid = DataLoader_oneshot(args.data_dir, self.wavenet.receptive_fields, args.ddc_channel_select, valid=True, shuffle=False)
+        # net & data
+        if self.args.mode == 'onset_spectre':
+            self.wavenet = WaveNet_onset(self.args.layer_size, self.args.stack_size, self.args.in_channels, self.args.res_channels, self.args.out_channels, self.args.gc_channels, self.args.input_scale, lr=self.args.lr)
+            self.data_loader = DataLoader_onset(self.args.data_dir, self.wavenet.receptive_fields, self.args.ddc_channel_select)
+            self.data_loader_valid = DataLoader_onset(self.args.data_dir, self.wavenet.receptive_fields, self.args.ddc_channel_select, valid=True, shuffle=False)
 
-        if args.mode == 'oneshot_spectre_snap':
-            self.wavenet = WaveNet_oneshot(args.layer_size, args.stack_size, args.in_channels, args.res_channels, args.out_channels, args.gc_channels, args.input_scale, lr=args.lr)
-            self.data_loader = DataLoader_oneshot_snap(args.data_dir, self.wavenet.receptive_fields, args.ddc_channel_select, args.sample_size)
-            self.data_loader_valid = DataLoader_oneshot_snap(args.data_dir, self.wavenet.receptive_fields, args.ddc_channel_select, args.sample_size, valid=True, shuffle=False)
+        if self.args.mode == 'onset_raw':
+            self.wavenet = WaveNet_onset(self.args.layer_size, self.args.stack_size, self.args.in_channels, self.args.res_channels, self.args.out_channels, self.args.gc_channels, self.args.input_scale, lr=self.args.lr)
+            self.data_loader = DataLoader_onset_raw(self.args.data_dir, self.wavenet.receptive_fields, self.args.sample_size)
+            self.data_loader_valid = DataLoader_onset_raw(self.args.data_dir, self.wavenet.receptive_fields, self.args.sample_size, valid=True, shuffle=False)
 
-        if args.mode == 'oneshot_raw':
-            self.wavenet = WaveNet_oneshot(args.layer_size, args.stack_size, args.in_channels, args.res_channels, args.out_channels, args.gc_channels, args.input_scale, lr=args.lr)
-            self.data_loader = DataLoader_oneshot_raw(args.data_dir, self.wavenet.receptive_fields, args.sample_size)
-            self.data_loader_valid = DataLoader_oneshot_raw(args.data_dir, self.wavenet.receptive_fields, args.sample_size, valid=True, shuffle=False)
+        if self.args.mode == 'oneshot_spectre':
+            self.wavenet = WaveNet_oneshot(self.args.layer_size, self.args.stack_size, self.args.in_channels, self.args.res_channels, self.args.out_channels, self.args.gc_channels, self.args.input_scale, lr=self.args.lr)
+            self.data_loader = DataLoader_oneshot(self.args.data_dir, self.wavenet.receptive_fields, self.args.ddc_channel_select)
+            self.data_loader_valid = DataLoader_oneshot(self.args.data_dir, self.wavenet.receptive_fields, self.args.ddc_channel_select, valid=True, shuffle=False)
 
-        if args.mode == 'oneshot_raw_snap':
-            self.wavenet = WaveNet_oneshot(args.layer_size, args.stack_size, args.in_channels, args.res_channels, args.out_channels, args.gc_channels, args.input_scale, lr=args.lr)
-            self.data_loader = DataLoader_oneshot_raw_snap(args.data_dir, self.wavenet.receptive_fields, args.sample_size)
-            self.data_loader_valid = DataLoader_oneshot_raw_snap(args.data_dir, self.wavenet.receptive_fields, args.sample_size, valid=True, shuffle=False)
+        if self.args.mode == 'oneshot_spectre_snap':
+            self.wavenet = WaveNet_oneshot(self.args.layer_size, self.args.stack_size, self.args.in_channels, self.args.res_channels, self.args.out_channels, self.args.gc_channels, self.args.input_scale, lr=self.args.lr)
+            self.data_loader = DataLoader_oneshot_snap(self.args.data_dir, self.wavenet.receptive_fields, self.args.ddc_channel_select, self.args.sample_size)
+            self.data_loader_valid = DataLoader_oneshot_snap(self.args.data_dir, self.wavenet.receptive_fields, self.args.ddc_channel_select, self.args.sample_size, valid=True, shuffle=False)
+
+        if self.args.mode == 'oneshot_raw':
+            self.wavenet = WaveNet_oneshot(self.args.layer_size, self.args.stack_size, self.args.in_channels, self.args.res_channels, self.args.out_channels, self.args.gc_channels, self.args.input_scale, lr=self.args.lr)
+            self.data_loader = DataLoader_oneshot_raw(self.args.data_dir, self.wavenet.receptive_fields, self.args.sample_size)
+            self.data_loader_valid = DataLoader_oneshot_raw(self.args.data_dir, self.wavenet.receptive_fields, self.args.sample_size, valid=True, shuffle=False)
+
+        if self.args.mode == 'oneshot_raw_snap':
+            self.wavenet = WaveNet_oneshot(self.args.layer_size, self.args.stack_size, self.args.in_channels, self.args.res_channels, self.args.out_channels, self.args.gc_channels, self.args.input_scale, lr=self.args.lr)
+            self.data_loader = DataLoader_oneshot_raw_snap(self.args.data_dir, self.wavenet.receptive_fields, self.args.sample_size)
+            self.data_loader_valid = DataLoader_oneshot_raw_snap(self.args.data_dir, self.wavenet.receptive_fields, self.args.sample_size, valid=True, shuffle=False)
         # }}}
         print('network & data loader OK')
         # log init {{{

@@ -149,7 +149,8 @@ class WaveNet:
 # }}}
 # ddc wavenet {{{
 """
-モデルは共通ではあるものの、validationにおいて最終的なonsetはしきい値処理という後処理工程を挟むので別クラス
+model: reuse of original repo
++ validation of ddc dataset
 """
 class WaveNet_onset(WaveNet):
     def __init__(self, layer_size, stack_size, in_channels, res_channels, out_channels, gc_channels, input_scale, lr=0.002):
