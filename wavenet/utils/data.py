@@ -8,7 +8,7 @@ import os,sys
 import librosa, warnings
 import numpy as np
 
-import torch
+import torch, torchaudio
 import torch.utils.data as data
 
 import pickle
@@ -304,7 +304,7 @@ class Dataset_onset_raw(data.Dataset):
 
         self.root_path = data_dir
         self.filenames_chart = [x for x in sorted(os.listdir(self.root_path)) if x.split('.')[-1] == 'pkl']
-        self.filenames_audio = [x for x in sorted(os.listdir(self.root_path)) if x.split('.')[-1] == 'ogg']
+        self.filenames_audio = [x for x in sorted(os.listdir(self.root_path)) if x.split('.')[-1] == 'wav']
 
     def __getitem__(self, index):
         filepath_chart = os.path.join(self.root_path, self.filenames_chart[index])
@@ -313,7 +313,7 @@ class Dataset_onset_raw(data.Dataset):
         with open(filepath_chart, 'rb') as f:
             file_chart = pickle.load(f)
 
-        raw_audio = load_audio(filepath_audio, self.sample_rate, self.trim)
+        raw_audio = load_audio_2(filepath_audio)
         encoded_audio = mu_law_encode(raw_audio, self.in_channels)
         encoded_audio = one_hot_encode(encoded_audio, self.in_channels)
 
@@ -599,7 +599,7 @@ class Dataset_oneshot_raw(data.Dataset):
 
         self.root_path = data_dir
         self.filenames_chart = [x for x in sorted(os.listdir(self.root_path)) if x.split('.')[-1] == 'pkl']
-        self.filenames_audio = [x for x in sorted(os.listdir(self.root_path)) if x.split('.')[-1] == 'ogg']
+        self.filenames_audio = [x for x in sorted(os.listdir(self.root_path)) if x.split('.')[-1] == 'wav']
 
     def __getitem__(self, index):
         filepath_chart = os.path.join(self.root_path, self.filenames_chart[index])
@@ -608,7 +608,7 @@ class Dataset_oneshot_raw(data.Dataset):
         with open(filepath_chart, 'rb') as f:
             file_chart = pickle.load(f)
 
-        raw_audio = load_audio(filepath_audio, self.sample_rate, self.trim)
+        raw_audio = load_audio_2(filepath_audio)
         encoded_audio = mu_law_encode(raw_audio, self.in_channels)
         encoded_audio = one_hot_encode(encoded_audio, self.in_channels)
 
@@ -1073,4 +1073,13 @@ class DataLoader_oneshot_snap(data.DataLoader):
                 target_batch_unrolling = [self._variable(target_batch)]
                 diff_batch_unrolling = [self._variable(diff_batch)]
                 yield (song_feat_batch_unrolling, diff_batch_unrolling), target_batch_unrolling
+# }}}
+
+# akiba original audio methods{{{
+def load_audio_2(filename):
+    with warnings.catch_warnings():
+        warnings.simplefilter('ignore')
+        audio, _ = torchaudio.load_wav(filename)
+    audio = audio.reshape(-1, 1)
+    return audio
 # }}}
