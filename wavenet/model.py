@@ -110,7 +110,7 @@ class WaveNet:
         with torch.no_grad():
             outputs_list = []
             for inputs, gc_inputs in zip(inputs_unrolling, gc_inputs_unrolling):
-                if torch.cuda.is_available():
+                if torch.cuda.is_available() and not inputs.is_cuda:
                     inputs = inputs.cuda()
                     gc_inputs = gc_inputs.cuda()
                 outputs = self.net(inputs, gc_inputs)
@@ -258,7 +258,7 @@ class WaveNet_oneshot(WaveNet):
 
         losses = []
         for inputs, gc_inputs, targets in zip(inputs_unrolling, gc_inputs_unrolling, targets_unrolling):
-            if torch.cuda.is_available():
+            if torch.cuda.is_available() and not inputs.is_cuda:
                 inputs = inputs.cuda()
                 gc_inputs = gc_inputs.cuda()
                 targets = targets.cuda()
