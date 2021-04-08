@@ -12,7 +12,7 @@ import numpy as np
 
 import wavenet.config as config
 from wavenet.model import WaveNet_onset, WaveNet_oneshot
-from wavenet.utils.data import DataLoader_onset, DataLoader_onset_raw, DataLoader_oneshot, DataLoader_oneshot_snap, DataLoader_oneshot_raw, DataLoader_oneshot_raw_snap
+from wavenet.utils.data import DataLoader_onset, DataLoader_onset_raw, DataLoader_oneshot, DataLoader_oneshot_snap, DataLoader_oneshot_raw, DataLoader_oneshot_raw_snap, DataLoader_preconv_snap
 
 
 class Trainer:
@@ -49,6 +49,11 @@ class Trainer:
             self.wavenet = WaveNet_oneshot(args.layer_size, args.stack_size, args.in_channels, args.res_channels, args.out_channels, args.gc_channels, args.input_scale, lr=args.lr)
             self.data_loader = DataLoader_oneshot_raw_snap(args.data_dir, self.wavenet.receptive_fields, args.sample_size)
             self.data_loader_valid = DataLoader_oneshot_raw_snap(args.data_dir, self.wavenet.receptive_fields, args.sample_size, valid=True, shuffle=False)
+
+        if args.mode == 'oneshot_raw_preconv':
+            self.wavenet = WaveNet_oneshot(args.layer_size, args.stack_size, args.in_channels, args.res_channels, args.out_channels, args.gc_channels, args.input_scale, lr=args.lr, preconv='raw')
+            self.data_loader = DataLoader_preconv_snap(args.data_dir, self.wavenet.receptive_fields, args.sample_size)
+            self.data_loader_valid = DataLoader_preconv_snap(args.data_dir, self.wavenet.receptive_fields, args.sample_size, valid=True, shuffle=False)
         # }}}
         print('network & data loader OK')
         # log init {{{
@@ -107,7 +112,10 @@ class Trainer:
             # training for one epoch
             print('training for one epoch ...')
             loss_sum = 0
+            steps_inepoch = 0
             for inputs_unrolling, targets_unrolling in self.one_epoch_batch():
+                total_steps += 1
+                steps_inepoch += 1
                 if self.args.gc_channels:
                     inputs_unrolling, gc_inputs_unrolling = inputs_unrolling
                 else:
@@ -115,13 +123,12 @@ class Trainer:
 
                 loss = self.wavenet.train(inputs_unrolling, targets_unrolling, gc_inputs_unrolling)
                 loss_sum += loss
-                total_steps += 1
                 print('[{0}/{1}] loss: {2}'.format(total_steps, args.num_steps, loss))
 
-            self.log('train/mean_cross_entropy', loss/len(self.data_loader.dataset), total_steps)
+            self.log('train/mean_cross_entropy', loss_sum/steps_inepoch, total_steps)
 
             # do validation
-            print('validating...', end='')
+            print('validating...')
             # prediction store initialize (if mAP)
             if do_calc_mAP_256:
                 targets_label_onehot_all = np.zeros((0,args.out_channels-1), dtype=np.int)

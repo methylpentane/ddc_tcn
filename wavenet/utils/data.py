@@ -14,6 +14,8 @@ import torch.utils.data as data
 import pickle
 import random
 
+from IPython import embed
+
 # general audio methods {{{
 def load_audio(filename, sample_rate=16000, trim=True, trim_frame_length=2048):
     with warnings.catch_warnings():
@@ -1082,4 +1084,155 @@ def load_audio_2(filename):
         audio, _ = torchaudio.load_wav(filename)
     audio = audio.reshape(-1, 1)
     return audio
+# }}}
+# Dataset class (oneshot_preconv_snap){{{
+    """
+        * バッチサイズ１(一曲ずつ読み込む)
+        receptive_fieldsをspectre準拠(楽譜length)で計算し、インデックス160倍でraw audioから切り出す
+        その際、paddingはrawと同じようにきちんとしないと要素数が合わないよ
+    """
+
+class DataLoader_preconv_snap(data.DataLoader):
+    def __init__(self, data_dir, receptive_fields,
+                 sample_size=0, sample_rate=16000, chart_sample_rate=100, in_channels=256,
+                 batch_size=1, shuffle=True, valid=False):
+
+        # add validation feature. if valid=True, this is dataloader for validation
+        datasets = []
+        for d_dir in data_dir:
+            dataset = Dataset_oneshot_raw(d_dir)
+            dataset_size = len(dataset)
+            train_size = int(dataset_size*0.9)
+            if valid==False:
+                dataset = data.Subset(dataset, list(range(train_size)))
+            else:
+                dataset = data.Subset(dataset, list(range(train_size, dataset_size)))
+            datasets.append(dataset)
+        dataset = data.ConcatDataset(datasets)
+        super(DataLoader_preconv_snap, self).__init__(dataset, batch_size, shuffle)
+
+        # if sample_size <= receptive_fields:
+        #     raise Exception("sample_size has to be bigger than receptive_fields")
+
+        self.audio_sample_rate = sample_rate
+        self.chart_sample_rate = chart_sample_rate
+
+        self.ratio = self.audio_sample_rate//self.chart_sample_rate
+
+        self.chart_sample_size = sample_size
+        self.audio_sample_size = sample_size*self.ratio
+
+        self.chart_receptive_fields = receptive_fields
+        self.audio_receptive_fields = receptive_fields*self.ratio
+
+        self.diffs = ['Beginner', 'Easy', 'Medium', 'Hard', 'Challenge']
+
+        self.collate_fn = self._collate_fn
+        self.valid = valid
+
+    def calc_sample_size(self, audio):
+        if len(audio[0]) >= self.audio_sample_size + self.audio_receptive_fields:
+            tmp_audio_sample_size = self.audio_sample_size
+        else:
+            tmp_audio_sample_size = len(audio[0]) # この時len(audio[0])がゼロならば終了
+        tmp_chart_sample_size = tmp_audio_sample_size // self.ratio
+        assert tmp_audio_sample_size % self.ratio == 0
+        return tmp_chart_sample_size, tmp_audio_sample_size
+
+    @staticmethod
+    def _variable(data):
+        tensor = torch.from_numpy(data.copy()).float()
+        return tensor
+
+        # if torch.cuda.is_available():
+        #     return torch.autograd.Variable(tensor.cuda())
+        # else:
+        #     return torch.autograd.Variable(tensor)
+
+    @staticmethod
+    def _symbol_encode(sequence):
+        # res.shape: [len(chart.onsets), 1]
+        res = np.array([[int(symbol, base=4)] for symbol in sequence])
+        return res
+
+    def _collate_fn(self, files):
+        file = files[0]
+        file_chart, encoded_audio = file
+        _, _, charts = file_chart
+
+        # song_feat
+        padding = charts[0].nframes*self.ratio - encoded_audio.shape[0]
+        assert padding >= 0
+        song_feat_batch = np.array([encoded_audio]) # batch_size:1
+        song_feat_batch = np.pad(song_feat_batch, [[0, 0], [self.audio_receptive_fields, int(padding)], [0, 0]], 'constant')
+
+        # chart
+        target_batch_iter = []
+        diff_batch_iter = []
+        for chart in random.sample(charts, len(charts)):
+            target_onsets = [[int(frame_idx in chart.onsets)] for frame_idx in range(chart.nframes)]
+            target_onsets = np.array(target_onsets)
+            target_symbol = self._symbol_encode(chart.sequence)
+            target_batch = np.zeros((target_onsets.shape[0],1))
+            target_batch[sorted(list(chart.onsets))] = target_symbol
+            target_batch = np.concatenate([target_onsets, target_batch], axis=1)[np.newaxis]
+            target_batch_iter.append(target_batch)
+            diff = chart.get_coarse_difficulty()
+            diff_batch = np.zeros((1,5))
+            diff_batch[0][self.diffs.index(diff)] = 1.0
+            diff_batch_iter.append(diff_batch)
+
+        # target_batch_iterというリストの中に一曲のchartをすべて入れてイテレーションをするので、yieldを利用する
+        for target_batch, diff_batch in zip(target_batch_iter, diff_batch_iter):
+            if self.audio_sample_size != 0:
+                song_feat_batch_copy = song_feat_batch.copy()
+                song_feat_batch_unrolling = []
+                target_batch_unrolling = []
+                diff_batch_unrolling = []
+                # make train unrollings
+                if not self.valid:
+                    # random sample by constant sample size
+                    num_unrolling = int(song_feat_batch.shape[1]/self.audio_sample_size)
+                    assert num_unrolling > 0
+                    for nu in range(num_unrolling):
+                        former = []
+                        while True:
+                            target_index_start = random.randint(0, target_batch.shape[1]-self.chart_sample_size)
+                            if target_index_start not in former:
+                                former.append(target_index_start)
+                                break
+                        targets = target_batch[:, target_index_start:target_index_start+self.chart_sample_size, :]
+                        audio_index_start = target_index_start*self.ratio
+                        inputs = song_feat_batch_copy[:, audio_index_start:audio_index_start+self.audio_sample_size+self.audio_receptive_fields, :]
+                        # ここがメモリオーバーフローの原因の一つかもしれない(根本的な原因はやっぱりネットワークだと思うけど)
+                        song_feat_batch_unrolling.append(self._variable(inputs))
+                        target_batch_unrolling.append(self._variable(targets))
+                        diff_batch_unrolling.append(self._variable(diff_batch))
+                    # for s, t, d in zip(song_feat_batch_unrolling, target_batch_unrolling, diff_batch_unrolling):
+                    #     yield ([self._variable(s)], [self._variable(d)]), [self._variable(t)]
+                    yield (song_feat_batch_unrolling, diff_batch_unrolling), target_batch_unrolling
+                # make valid unrollings
+                else:
+                    while self.chart_sample_size < target_batch.shape[1]:
+                        inputs = song_feat_batch_copy[:, :self.audio_sample_size+self.audio_receptive_fields, :]
+                        targets = target_batch[:, :self.chart_sample_size]
+                        song_feat_batch_copy = song_feat_batch_copy[:, self.audio_sample_size:, :]
+                        target_batch = target_batch[:, self.chart_sample_size:]
+                        # ここがメモリオーバーフローの原因の一つかもしれない(根本的な原因はやっぱりネットワークだと思うけど)
+                        song_feat_batch_unrolling.append(self._variable(inputs))
+                        target_batch_unrolling.append(self._variable(targets))
+                        diff_batch_unrolling.append(self._variable(diff_batch))
+                    song_feat_batch_unrolling.append(self._variable(song_feat_batch_copy))
+                    target_batch_unrolling.append(self._variable(target_batch))
+                    diff_batch_unrolling.append(self._variable(diff_batch))
+                    # for s, t, d in zip(song_feat_batch_unrolling, target_batch_unrolling, diff_batch_unrolling):
+                    #     yield ([self._variable(s)], [self._variable(d)]), [self._variable(t)]
+                    yield (song_feat_batch_unrolling, diff_batch_unrolling), target_batch_unrolling
+
+            # input whole data
+            else:
+                song_feat_batch_unrolling = [self._variable(song_feat_batch)]
+                target_batch_unrolling = [self._variable(target_batch)]
+                diff_batch_unrolling = [self._variable(diff_batch)]
+                yield (song_feat_batch_unrolling, diff_batch_unrolling), target_batch_unrolling
 # }}}

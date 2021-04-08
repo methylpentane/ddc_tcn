@@ -193,7 +193,7 @@ class DensNet(torch.nn.Module):
 # }}}
 # WaveNetModule {{{
 class WaveNetModule(torch.nn.Module):
-    def __init__(self, layer_size, stack_size, in_channels, res_channels, out_channels, gc_channels, input_scale):
+    def __init__(self, layer_size, stack_size, in_channels, res_channels, out_channels, gc_channels, input_scale, preconv='none'):
         """
         Stack residual blocks by layer and stack size
         :param layer_size: integer, 10 = layer[dilation=1, dilation=2, 4, 8, 16, 32, 64, 128, 256, 512]
@@ -203,13 +203,22 @@ class WaveNetModule(torch.nn.Module):
         :param out_channels: number of final output channel
         :param gc_channels: number of input channel for global conditioning. 0 for disable gc
         :param input_scale: = input_size / output_size
+        :param preconv: = whether do preconv 'none':dont 'raw':preconv for raw 'spectre':preconv for spectre
         :return:
         """
         super(WaveNetModule, self).__init__()
 
         self.receptive_fields = self.calc_receptive_fields(layer_size, stack_size)
 
-        self.causal = CausalConv1d(in_channels, res_channels)
+        self.preconv = None
+
+        if preconv == 'raw':
+            self.preconv = PreConv_raw(in_channels, res_channels)
+
+        if self.preconv:
+            self.causal = CausalConv1d(res_channels, res_channels)
+        else:
+            self.causal = CausalConv1d(in_channels, res_channels)
 
         self.res_stack = ResidualStack(layer_size, stack_size, res_channels, in_channels, gc_channels)
 
@@ -223,7 +232,10 @@ class WaveNetModule(torch.nn.Module):
         return int(num_receptive_fields)
 
     def calc_output_size(self, x):
-        output_size = int(x.size(2)) - self.receptive_fields
+        if self.preconv:
+            output_size = int(x.size(2))//160 - self.receptive_fields
+        else:
+            output_size = int(x.size(2)) - self.receptive_fields
 
         self.check_input_size(x, output_size)
 
@@ -246,6 +258,9 @@ class WaveNetModule(torch.nn.Module):
 
         output_size = self.calc_output_size(output)
 
+        if self.preconv:
+            output = self.preconv(output)
+
         output = self.causal(output)
 
         skip_connections = self.res_stack(output, output_size, gc)
@@ -255,4 +270,49 @@ class WaveNetModule(torch.nn.Module):
         output = self.densnet(output)
 
         return output.transpose(1, 2).contiguous()
+# }}}
+
+# PreConv_raw {{{
+class PreConv_raw(torch.nn.Module):
+    """
+    Pre-Convolution layer for raw-audio-DDC
+    1/160 time compression
+    2*2*2*2*2*5(pool)
+    achieving receptive field 1280 step (80 ms @ 16000Hz audio)
+
+    objective - get parameters for fourier transform like function
+    """
+    def __init__(self, in_channels, res_channels):
+        super(PreConv_raw, self).__init__()
+
+        self.conv_p = torch.nn.Conv1d(in_channels, res_channels, kernel_size=2, stride=1, padding=4)
+        self.dilated_conv_1 = torch.nn.Conv1d(res_channels, res_channels, kernel_size=2, stride=1, dilation=1)
+        self.dilated_conv_2 = torch.nn.Conv1d(res_channels, res_channels, kernel_size=2, stride=1, dilation=2)
+        self.dilated_conv_3 = torch.nn.Conv1d(res_channels, res_channels, kernel_size=2, stride=1, dilation=4)
+
+        self.BN_1 = torch.nn.BatchNorm1d(res_channels)
+
+        self.conv_1 = torch.nn.Conv1d(res_channels, res_channels, kernel_size=4, stride=4)
+        self.conv_2 = torch.nn.Conv1d(res_channels, res_channels, kernel_size=4, stride=4)
+        self.conv_3 = torch.nn.Conv1d(res_channels, res_channels, kernel_size=2, stride=2)
+        self.maxpool= torch.nn.MaxPool1d(kernel_size=5, stride=5)
+
+        self.BN_2 = torch.nn.BatchNorm1d(res_channels)
+
+    def forward(self, x):
+        x = self.conv_p(x)
+        x = self.dilated_conv_1(x)
+        x = self.dilated_conv_2(x)
+        x = self.dilated_conv_3(x)
+        x = self.BN_1(x)
+        x = self.conv_1(x)
+        x = self.conv_2(x)
+        x = self.conv_3(x)
+        x = self.maxpool(x)
+        output = self.BN_2(x)
+       #  from IPython import embed
+       #  embed()
+       #  exit()
+
+        return output
 # }}}

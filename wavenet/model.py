@@ -18,9 +18,9 @@ from sklearn.metrics import roc_curve, precision_recall_curve, auc, accuracy_sco
 
 # original WaveNet {{{
 class WaveNet:
-    def __init__(self, layer_size, stack_size, in_channels, res_channels, out_channels, gc_channels, input_scale, lr=0.002):
+    def __init__(self, layer_size, stack_size, in_channels, res_channels, out_channels, gc_channels, input_scale, lr=0.002, preconv='none'):
 
-        self.net = WaveNetModule(layer_size, stack_size, in_channels, res_channels, out_channels, gc_channels, input_scale)
+        self.net = WaveNetModule(layer_size, stack_size, in_channels, res_channels, out_channels, gc_channels, input_scale, preconv)
 
         self.in_channels = in_channels
         self.out_channels = out_channels
@@ -110,6 +110,9 @@ class WaveNet:
         with torch.no_grad():
             outputs_list = []
             for inputs, gc_inputs in zip(inputs_unrolling, gc_inputs_unrolling):
+                if torch.cuda.is_available():
+                    inputs = inputs.cuda()
+                    gc_inputs = gc_inputs.cuda()
                 outputs = self.net(inputs, gc_inputs)
                 outputs_list.append(outputs)
 
@@ -152,8 +155,8 @@ class WaveNet:
 モデルは共通ではあるものの、validationにおいて最終的なonsetはしきい値処理という後処理工程を挟むので別クラス
 """
 class WaveNet_onset(WaveNet):
-    def __init__(self, layer_size, stack_size, in_channels, res_channels, out_channels, gc_channels, input_scale, lr=0.002):
-        super(WaveNet_onset, self).__init__(layer_size, stack_size, in_channels, res_channels, out_channels, gc_channels, input_scale, lr)
+    def __init__(self, layer_size, stack_size, in_channels, res_channels, out_channels, gc_channels, input_scale, lr=0.002, preconv='none'):
+        super(WaveNet_onset, self).__init__(layer_size, stack_size, in_channels, res_channels, out_channels, gc_channels, input_scale, lr, preconv)
 
     def validation(self, inputs_unrolling, targets_unrolling, gc_inputs_unrolling=None):
         """
@@ -227,8 +230,8 @@ class WaveNet_onset(WaveNet):
 oneshotもいろいろ違うので別クラス
 """
 class WaveNet_oneshot(WaveNet):
-    def __init__(self, layer_size, stack_size, in_channels, res_channels, out_channels, gc_channels, input_scale, lr=0.002):
-        super(WaveNet_oneshot, self).__init__(layer_size, stack_size, in_channels, res_channels, out_channels, gc_channels, input_scale, lr)
+    def __init__(self, layer_size, stack_size, in_channels, res_channels, out_channels, gc_channels, input_scale, lr=0.002, preconv='none'):
+        super(WaveNet_oneshot, self).__init__(layer_size, stack_size, in_channels, res_channels, out_channels, gc_channels, input_scale, lr, preconv)
 
     def _loss(self):
         loss = LossForOneshot(self.out_channels)
@@ -255,12 +258,17 @@ class WaveNet_oneshot(WaveNet):
 
         losses = []
         for inputs, gc_inputs, targets in zip(inputs_unrolling, gc_inputs_unrolling, targets_unrolling):
+            if torch.cuda.is_available():
+                inputs = inputs.cuda()
+                gc_inputs = gc_inputs.cuda()
+                targets = targets.cuda()
             outputs = self.net(inputs, gc_inputs)
             loss = self.loss(outputs, targets)
             losses.append(loss.item())
 
             self.optimizer.zero_grad()
             loss.backward()
+            del loss
             self.optimizer.step()
 
         loss_avg = sum(losses)/len(losses)
