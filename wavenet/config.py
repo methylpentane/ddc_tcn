@@ -10,6 +10,7 @@ parser.add_argument('--mode', type=str, choices=['onset_spectre', 'onset_raw', '
 parser.add_argument('--ddc_channel_select', type=int, nargs='+', default=[0], help='(with spectre) selective index of stft window size')
 parser.add_argument('--sample_rate', type=int, default=16000, help='(with raw) Sampling rates for input sound.')
 parser.add_argument('--sample_size', type=int, default=10000, help='(with snap) Sample size for training input.')
+parser.add_argument('--all_random', action='store_true', default=False)
 
 # model setting
 parser.add_argument('--layer_size', type=int, default=10,

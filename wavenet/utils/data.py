@@ -941,7 +941,7 @@ class DataLoader_oneshot_raw_snap(data.DataLoader):
 class DataLoader_oneshot_snap(data.DataLoader):
     def __init__(self, data_dir, receptive_fields, ddc_channel_select,
                  sample_size=0,
-                 batch_size=1, shuffle=True, valid=False):
+                 batch_size=1, shuffle=True, valid=False, all_random=False):
         """
         DataLoader for WaveNet
         :param data_dir:
@@ -979,6 +979,8 @@ class DataLoader_oneshot_snap(data.DataLoader):
         self.collate_fn = self._collate_fn
         self.valid = valid
 
+        self.all_random = all_random
+
     def calc_sample_size(self, audio):
         if len(audio[0]) >= self.sample_size + self.receptive_fields:
             tmp_sample_size = self.sample_size
@@ -1014,7 +1016,8 @@ class DataLoader_oneshot_snap(data.DataLoader):
         # chart
         target_batch_iter = []
         diff_batch_iter = []
-        for chart in random.sample(charts, len(charts)):
+        num_chart = 1 if self.all_random else len(charts)
+        for chart in random.sample(charts, num_chart):
             target_onsets = [[int(frame_idx in chart.onsets)] for frame_idx in range(chart.nframes)]
             target_onsets = np.array(target_onsets)
             target_symbol = self._symbol_encode(chart.sequence)
@@ -1037,7 +1040,7 @@ class DataLoader_oneshot_snap(data.DataLoader):
                 # make train unrollings
                 if not self.valid:
                     # random sample by constant sample size
-                    num_unrolling = int(song_feat_batch.shape[1]/self.sample_size)
+                    num_unrolling = 1 if self.all_random else int(song_feat_batch.shape[1]/self.sample_size)
                     assert num_unrolling > 0
                     for nu in range(num_unrolling):
                         former = []

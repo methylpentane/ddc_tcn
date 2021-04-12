@@ -47,7 +47,7 @@ class Trainer:
 
         if args.mode == 'oneshot_raw_snap':
             self.wavenet = WaveNet_oneshot(args.layer_size, args.stack_size, args.in_channels, args.res_channels, args.out_channels, args.gc_channels, args.input_scale, lr=args.lr)
-            self.data_loader = DataLoader_oneshot_raw_snap(args.data_dir, self.wavenet.receptive_fields, args.sample_size)
+            self.data_loader = DataLoader_oneshot_raw_snap(args.data_dir, self.wavenet.receptive_fields, args.sample_size, all_random=args.all_random)
             self.data_loader_valid = DataLoader_oneshot_raw_snap(args.data_dir, self.wavenet.receptive_fields, args.sample_size, valid=True, shuffle=False)
 
         if args.mode == 'oneshot_raw_preconv':
